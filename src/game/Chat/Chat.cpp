@@ -106,6 +106,8 @@ ChatCommand * ChatHandler::getCommandTable()
         { "clearmarks", SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotClearMarksCommand,  "", nullptr },
         { "cometome",   SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotComeToMeCommand,    "", nullptr },
         { "usegobject", SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotUseGObjectCommand,  "", nullptr },
+        { "stay",       SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotStayCommand,        "", nullptr },
+        { "unstay",     SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotUnstayCommand,      "", nullptr },
         { "pause",      SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotPauseCommand,       "", nullptr },
         { "unpause",    SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotUnpauseCommand,     "", nullptr },
         { "unequip",    SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotUnequipCommand,     "", nullptr },

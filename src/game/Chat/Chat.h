@@ -282,7 +282,9 @@ class ChatHandler
         bool HandlePartyBotClearMarksCommand(char * args);
         bool HandlePartyBotComeToMeCommand(char * args);
         bool HandlePartyBotUseGObjectCommand(char * args);
-        bool HandlePartyBotPauseCommand(char * args);
+        bool HandlePartyBotStayCommand(char* args);
+        bool HandlePartyBotUnstayCommand(char* args);
+        bool HandlePartyBotPauseCommand(char* args);
         bool HandlePartyBotUnpauseCommand(char * args);
         bool HandlePartyBotUnequipCommand(char * args);
         bool HandlePartyBotRemoveCommand(char * args);
@@ -1086,6 +1088,7 @@ class ChatHandler
         bool HandleBanHelper(BanMode mode, char* args);
         bool HandleBanInfoHelper(uint32 accountid, char const* accountname);
         bool HandleUnBanHelper(BanMode mode, char* args);
+        bool HandlePartyBotStayHelper(char* args, bool pause);
         bool HandlePartyBotPauseHelper(char* args, bool pause);
         void HandleCharacterLevel(Player* player, ObjectGuid player_guid, uint32 oldlevel, uint32 newlevel);
         void HandleLearnSkillRecipesHelper(Player* player, uint32 skill_id);

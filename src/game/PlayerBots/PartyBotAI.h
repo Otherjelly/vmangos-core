@@ -63,6 +63,7 @@ public:
     bool IsValidDistancingTarget(Unit* pTarget, Unit* pEnemy);
     Unit* GetDistancingTarget(Unit* pEnemy);
     bool RunAwayFromTarget(Unit* pEnemy);
+    void MoveChase(Unit* target, float dist = 0.0f, float angle = 0.0f);
     bool CrowdControlMarkedTargets();
     bool EnterCombatDruidForm();
     bool ShouldEnterStealth() const;
@@ -104,6 +105,7 @@ public:
     float m_z = 0.0f;
     float m_o = 0.0f;
     bool m_resetSpellData = false;
+    bool m_stay = false;
 };
 
 #endif
