@@ -104,6 +104,9 @@ void PartyBotAI::CloneFromPlayer(Player const* pPlayer)
 
 Player* PartyBotAI::GetPartyLeader() const
 {
+    if (m_leaderGuid == me->GetObjectGuid())
+        return me;
+
     Group* pGroup = me->GetGroup();
     if (!pGroup)
         return nullptr;
@@ -521,7 +524,7 @@ bool PartyBotAI::CrowdControlMarkedTargets()
 void PartyBotAI::AddToPlayerGroup()
 {
     Player* pPlayer = ObjectAccessor::FindPlayer(m_leaderGuid);
-    if (!pPlayer)
+    if (!pPlayer || pPlayer == me)
         return;
 
     Group* group = pPlayer->GetGroup();
@@ -591,6 +594,7 @@ void PartyBotAI::UpdateAI(uint32 const diff)
     if (!m_initialized)
     {
         AddToPlayerGroup();
+        Player* pLeader = GetPartyLeader();
 
         if (m_race && m_class) // temporary character
         {
@@ -624,6 +628,11 @@ void PartyBotAI::UpdateAI(uint32 const diff)
                 }
             }
             me->UpdateSkillsToMaxSkillsForLevel();
+        }
+        else if (me == pLeader)
+        {
+            if (m_role == ROLE_INVALID)
+                AutoAssignRole();
         }
         else // loaded from db
         {
@@ -663,6 +672,11 @@ void PartyBotAI::UpdateAI(uint32 const diff)
     if (!pLeader)
     {
         botEntry->requestRemoval = true;
+        return;
+    }
+
+    if (!me->GetGroup())
+    {
         return;
     }
 
@@ -762,7 +776,7 @@ void PartyBotAI::UpdateAI(uint32 const diff)
     if (me->GetTargetGuid() == me->GetObjectGuid())
         me->ClearTarget();
 
-    if (!me->IsInCombat())
+    if (!me->IsInCombat() && pLeader != me)
     {
         if (DrinkAndEat())
         {
@@ -856,7 +870,7 @@ void PartyBotAI::UpdateAI(uint32 const diff)
     {
         if (!pVictim)
         {
-            if (me->GetMotionMaster()->GetCurrentMovementGeneratorType() != FOLLOW_MOTION_TYPE)
+            if (me->GetMotionMaster()->GetCurrentMovementGeneratorType() != FOLLOW_MOTION_TYPE && me != pLeader)
                 me->GetMotionMaster()->MoveFollow(pLeader, urand(PB_MIN_FOLLOW_DIST, PB_MAX_FOLLOW_DIST), frand(PB_MIN_FOLLOW_ANGLE, PB_MAX_FOLLOW_ANGLE));
         }
         else

@@ -233,13 +233,25 @@ void PlayerBotMgr::Update(uint32 diff)
         {
             if (iter->second->requestRemoval)
             {
-                if (iter->second->ai && iter->second->ai->me)
+                bool keepLoggedIn = false;
+                if (iter->second->ai)
+                {
+                    if (CombatBotBaseAI* partyBot = dynamic_cast<CombatBotBaseAI*>(iter->second->ai.get()))
+                        keepLoggedIn = partyBot->m_leaderGuid == partyBot->me->GetObjectGuid();
+                }
+
+                if (iter->second->ai && iter->second->ai->me && !keepLoggedIn)
                     iter->second->ai->me->RemoveFromGroup();
 
                 DeleteBot(iter);
 
                 if (WorldSession* sess = sWorld.FindSession(iter->second->accountId))
-                    sess->LogoutPlayer(m_confAllowSaving);
+                {
+                    if (!keepLoggedIn)
+                        sess->LogoutPlayer(m_confAllowSaving);
+                    else
+                        sess->SetBot(nullptr);
+                }
 
                 iter->second->requestRemoval = false;
 
@@ -267,10 +279,14 @@ void PlayerBotMgr::Update(uint32 diff)
             continue;
         }
 
-        if (iter->second->ai->OnSessionLoaded(iter->second.get(), sess))
+        Player* pPlayer = sess->GetPlayer();
+        if (pPlayer || iter->second->ai->OnSessionLoaded(iter->second.get(), sess))
         {
             OnBotLogin(iter->second.get());
             m_stats.loadingCount--;
+
+            if (pPlayer)
+                OnPlayerInWorld(pPlayer);
 
             if (iter->second->isChatBot)
                 m_stats.onlineChat++;
@@ -410,10 +426,12 @@ bool PlayerBotMgr::AddBot(uint32 playerGUID, bool chatBot, PlayerBotAI* pAI)
         return false;
     }
 
-    if (sWorld.FindSession(accountId))
+    WorldSession* session = sWorld.FindSession(accountId);
+    if (session)
     {
-        sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "[PlayerBotMgr] Account %u is already online!", accountId);
-        return false;
+        sLog.Out(LOG_BASIC, LOG_LVL_DETAIL, "[PlayerBotMgr] Account %u is already online! Assuming direct control", accountId);
+        //sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "[PlayerBotMgr] Account %u is already online!", accountId);
+        //return false;
     }
 
     std::shared_ptr<PlayerBotEntry> e;
@@ -451,9 +469,12 @@ bool PlayerBotMgr::AddBot(uint32 playerGUID, bool chatBot, PlayerBotAI* pAI)
 
     e->ai->botEntry = e.get();
     e->state = PB_STATE_LOADING;
-    WorldSession* session = new WorldSession(accountId, nullptr, sAccountMgr.GetSecurity(accountId), 0, LOCALE_enUS);
+    if (!session)
+    {
+        session = new WorldSession(accountId, nullptr, sAccountMgr.GetSecurity(accountId), 0, LOCALE_enUS);
+        sWorld.AddSession(session);
+    }
     session->SetBot(e);
-    sWorld.AddSession(session);
     m_stats.loadingCount++;
     if (chatBot)
         AddTempBot(accountId, 20000);
@@ -996,9 +1017,11 @@ bool ChatHandler::HandlePartyBotLoadCommand(char* args)
     std::string name = ExtractPlayerNameFromLink(&args);
     if (name.empty())
     {
-        SendSysMessage(LANG_PLAYER_NOT_FOUND);
-        SetSentErrorMessage(true);
-        return false;
+        name = pPlayer->GetName();
+        SendSysMessage("Using current player as bot name to load");
+        //SendSysMessage(LANG_PLAYER_NOT_FOUND);
+        //SetSentErrorMessage(true);
+        //return false;
     }
 
     ObjectGuid guid = sObjectMgr.GetPlayerGuidByName(name).GetCounter();
@@ -1009,11 +1032,16 @@ bool ChatHandler::HandlePartyBotLoadCommand(char* args)
         return false;
     }
 
-    if (sObjectAccessor.FindPlayerNotInWorld(guid))
+    if (Player* pPlayer = sObjectAccessor.FindPlayerNotInWorld(guid))
     {
-        SendSysMessage("Player is already online!");
-        SetSentErrorMessage(true);
-        return false;
+        if (pPlayer->GetSession()->GetBot())
+        {
+            SendSysMessage("Player is already a bot!");
+            return true;
+        }
+        //SendSysMessage("Player is already online!");
+        //SetSentErrorMessage(true);
+        //return false;
     }
 
     float x, y, z;

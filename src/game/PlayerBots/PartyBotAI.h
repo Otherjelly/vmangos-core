@@ -39,6 +39,7 @@ public:
         m_role = ROLE_INVALID;
         m_leaderGuid = pLeader->GetObjectGuid();
         m_updateTimer.Reset(2000);
+        m_temporaryCharacter = false;
     }
 
     bool OnSessionLoaded(PlayerBotEntry* entry, WorldSession* sess) final;
@@ -92,7 +93,6 @@ public:
     std::vector<RaidTargetIcon> m_marksToCC;
     std::vector<RaidTargetIcon> m_marksToFocus;
     ShortTimeTracker m_updateTimer;
-    ObjectGuid m_leaderGuid;
     ObjectGuid m_cloneGuid;
     uint8 m_race = 0;
     uint8 m_class = 0;

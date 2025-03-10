@@ -7117,9 +7117,11 @@ bool Unit::IsMovedByPlayer() const
         if (pPossessor->GetCharmGuid() == GetObjectGuid())
             return true;
 
-    return IsPlayer() &&
-           static_cast<Player const*>(this)->IsControlledByOwnClient() &&
-           !static_cast<Player const*>(this)->IsBot();
+    //return IsPlayer() &&
+    //       static_cast<Player const*>(this)->IsControlledByOwnClient() &&
+    //       !static_cast<Player const*>(this)->IsBot();
+
+    return IsPlayer() && static_cast<Player const*>(this)->IsControlledByOwnClient();
 }
 
 PlayerMovementPendingChange::PlayerMovementPendingChange()

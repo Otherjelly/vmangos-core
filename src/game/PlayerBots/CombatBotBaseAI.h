@@ -553,6 +553,8 @@ public:
     } m_spells;
 
     bool m_initialized = false;
+    ObjectGuid m_leaderGuid;
+    bool m_temporaryCharacter = true;
     bool m_isBuffing = false;
     bool m_receivedBgInvite = false;
     uint8 m_visualHonorRank = 0;

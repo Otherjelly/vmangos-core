@@ -2296,15 +2296,18 @@ void CombatBotBaseAI::SummonPetIfNeeded()
             return;
         }
 
-        uint32 petId = PickRandomValue( PET_WOLF, PET_CAT, PET_BEAR, PET_CRAB, PET_GORILLA, PET_BIRD,
-                                        PET_BOAR, PET_BAT, PET_CROC, PET_SPIDER, PET_OWL, PET_STRIDER,
-                                        PET_SCORPID, PET_SERPENT, PET_RAPTOR, PET_TURTLE, PET_HYENA );
-        if (Creature* pCreature = me->SummonCreature(petId,
-            me->GetPositionX(), me->GetPositionY(), me->GetPositionZ(), 0.0f,
-            TEMPSUMMON_TIMED_COMBAT_OR_DEAD_DESPAWN, 3000, false, 3000))
+        if (m_temporaryCharacter)
         {
-            pCreature->SetLevel(me->GetLevel());
-            me->CastSpell(pCreature, SPELL_TAME_BEAST, true);
+             uint32 petId = PickRandomValue( PET_WOLF, PET_CAT, PET_BEAR, PET_CRAB, PET_GORILLA, PET_BIRD,
+                                             PET_BOAR, PET_BAT, PET_CROC, PET_SPIDER, PET_OWL, PET_STRIDER,
+                                             PET_SCORPID, PET_SERPENT, PET_RAPTOR, PET_TURTLE, PET_HYENA );
+             if (Creature* pCreature = me->SummonCreature(petId,
+                 me->GetPositionX(), me->GetPositionY(), me->GetPositionZ(), 0.0f,
+                 TEMPSUMMON_TIMED_COMBAT_OR_DEAD_DESPAWN, 3000, false, 3000))
+            {
+                 pCreature->SetLevel(me->GetLevel());
+                 me->CastSpell(pCreature, SPELL_TAME_BEAST, true);
+             }
         }
     }
     else if (me->GetClass() == CLASS_WARLOCK)
@@ -2820,8 +2823,11 @@ SpellCastResult CombatBotBaseAI::DoCastSpell(Unit* pTarget, SpellEntry const* pS
         result == SPELL_FAILED_ITEM_NOT_READY) &&
         pSpellEntry->Reagent[0])
     {
-        if (Item* pItem = me->GetItemByPos(INVENTORY_SLOT_BAG_0, INVENTORY_SLOT_ITEM_START))
-            me->DestroyItem(INVENTORY_SLOT_BAG_0, INVENTORY_SLOT_ITEM_START, true);
+        if (m_temporaryCharacter)
+        {
+             if (Item* pItem = me->GetItemByPos(INVENTORY_SLOT_BAG_0, INVENTORY_SLOT_ITEM_START))
+                 me->DestroyItem(INVENTORY_SLOT_BAG_0, INVENTORY_SLOT_ITEM_START, true);
+        }
 
         AddItemToInventory(pSpellEntry->Reagent[0]);
     }
@@ -2879,8 +2885,11 @@ void CombatBotBaseAI::AddHunterAmmo()
 
                 if (pAmmoProto)
                 {
-                    if (Item* pItem = me->GetItemByPos(INVENTORY_SLOT_BAG_0, INVENTORY_SLOT_ITEM_START))
-                        me->DestroyItem(INVENTORY_SLOT_BAG_0, INVENTORY_SLOT_ITEM_START, true);
+                    if (m_temporaryCharacter)
+                    {
+                         if (Item* pItem = me->GetItemByPos(INVENTORY_SLOT_BAG_0, INVENTORY_SLOT_ITEM_START))
+                             me->DestroyItem(INVENTORY_SLOT_BAG_0, INVENTORY_SLOT_ITEM_START, true);
+                    }
 
                     AddItemToInventory(pAmmoProto->ItemId, pAmmoProto->GetMaxStackSize());
                     me->SetAmmo(pAmmoProto->ItemId);
@@ -2892,6 +2901,10 @@ void CombatBotBaseAI::AddHunterAmmo()
 
 void CombatBotBaseAI::EquipOrUseNewItem()
 {
+    if (!m_temporaryCharacter)
+    {
+        return;
+    }
     for (int i = INVENTORY_SLOT_ITEM_START; i < INVENTORY_SLOT_ITEM_END; ++i)
     {
         Item* pItem = me->GetItemByPos(INVENTORY_SLOT_BAG_0, i);
