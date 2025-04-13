@@ -1569,6 +1569,156 @@ bool ChatHandler::HandlePartyBotUseGObjectCommand(char* args)
     return false;
 }
 
+bool ChatHandler::HandlePartyBotStayHelper(char* args, bool stay)
+{
+    Player* pPlayer = GetSession()->GetPlayer();
+    Player* pTarget = nullptr;
+    if (pPlayer->GetSelectionGuid())
+        pTarget = GetSelectedPlayer();
+
+    uint8 matchClassValue = 0;
+    CombatBotRoles matchRoleValue = ROLE_INVALID;
+    bool matchSomething = false;
+
+    std::string optionStr = args;
+    if (!optionStr.empty())
+    {
+        if (optionStr == "all")
+            pTarget = nullptr;
+        else
+        {
+            if (optionStr == "warrior")
+                matchClassValue = CLASS_WARRIOR;
+            else if (optionStr == "paladin")
+                matchClassValue = CLASS_PALADIN;
+            else if (optionStr == "hunter")
+                matchClassValue = CLASS_HUNTER;
+            else if (optionStr == "rogue")
+                matchClassValue = CLASS_ROGUE;
+            else if (optionStr == "priest")
+                matchClassValue = CLASS_PRIEST;
+            else if (optionStr == "shaman")
+                matchClassValue = CLASS_SHAMAN;
+            else if (optionStr == "mage")
+                matchClassValue = CLASS_MAGE;
+            else if (optionStr == "warlock")
+                matchClassValue = CLASS_WARLOCK;
+            else if (optionStr == "druid")
+                matchClassValue = CLASS_DRUID;
+            else if (optionStr == "tank")
+                matchRoleValue = ROLE_TANK;
+            else if (optionStr == "meleedps")
+                matchRoleValue = ROLE_MELEE_DPS;
+            else if (optionStr == "rangedps")
+                matchRoleValue = ROLE_RANGE_DPS;
+            else if (optionStr == "healer")
+                matchRoleValue = ROLE_HEALER;
+
+            matchSomething = (matchClassValue || matchRoleValue);
+            if (matchSomething)
+                pTarget = nullptr; // Ignore target if class/role provided
+            else if (pTarget == nullptr)
+                SendSysMessage("Option invalid and ignored, provide a target or use warrior||paladin||etc||tank||meleedps||rangedps||healer||all.");
+        }
+    }
+
+    if (pTarget)
+    {
+        if (optionStr == "c" || optionStr == "cr")
+        {
+            matchSomething = true;
+            matchClassValue = pTarget->GetClass();
+        }
+
+        if (pTarget->AI())
+        {
+            if (PartyBotAI* pAI = dynamic_cast<PartyBotAI*>(pTarget->AI()))
+            {
+                if (optionStr == "r" || optionStr == "cr")
+                {
+                    matchSomething = true;
+                    matchRoleValue = pAI->GetRole();
+                }
+
+                if (!matchSomething)
+                {
+                    pAI->m_stay = stay;
+                    pTarget->StopMoving();
+                    pTarget->GetMotionMaster()->MoveIdle();
+                    if (stay)
+                        PSendSysMessage("Staying %s.", pTarget->GetName());
+                    else
+                        PSendSysMessage("Unstaying %s.", pTarget->GetName());
+                }
+            }
+        }
+        else if (optionStr == "r" || optionStr == "cr")
+        {
+            SendSysMessage("Unable to match role when target is not a party bot.");
+            SetSentErrorMessage(true);
+            return false;
+        }
+
+        if (!matchSomething)
+        {
+            if (!optionStr.empty())
+            {
+                SendSysMessage("Option invalid and ignored, provide c||r||cr to match target on class||role||both.");
+                SetSentErrorMessage(true);
+                return false;
+            }
+            return true;
+        }
+    }
+
+    Group* pGroup = pPlayer->GetGroup();
+    if (!pGroup)
+    {
+        SendSysMessage("You are not in a group.");
+        SetSentErrorMessage(true);
+        return false;
+    }
+
+    for (GroupReference* itr = pGroup->GetFirstMember(); itr != nullptr; itr = itr->next())
+    {
+        if (Player* pMember = itr->getSource())
+        {
+            if (matchClassValue && pMember->GetClass() != matchClassValue)
+                continue;
+
+            if (pMember->AI())
+            {
+                if (PartyBotAI* pAI = dynamic_cast<PartyBotAI*>(pMember->AI()))
+                {
+                    if (matchRoleValue && pAI->GetRole() != matchRoleValue)
+                        continue;
+
+                    pAI->m_stay = stay;
+                    pMember->StopMoving();
+                    pMember->GetMotionMaster()->MoveIdle();
+                }
+            }
+        }
+    }
+
+    if (stay)
+        SendSysMessage("Staying party bots.");
+    else
+        SendSysMessage("Unstaying party bots.");
+
+    return true;
+}
+
+bool ChatHandler::HandlePartyBotStayCommand(char* args)
+{
+    return HandlePartyBotStayHelper(args, true);
+}
+
+bool ChatHandler::HandlePartyBotUnstayCommand(char* args)
+{
+    return HandlePartyBotStayHelper(args, false);
+}
+
 bool HandlePartyBotPauseApplyHelper(Player* pTarget, uint32 duration)
 {
     if (pTarget->AI())
