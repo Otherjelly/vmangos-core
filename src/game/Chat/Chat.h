@@ -271,7 +271,9 @@ class ChatHandler
         bool PartyBotAddRequirementCheck(Player const* pPlayer, Player const* pTarget);
         bool HandlePartyBotAddCommand(char * args);
         bool HandlePartyBotCloneCommand(char * args);
+        bool HandlePartyBotLoadHelper(Player* pPlayer, std::string name, bool warnAlreadyBot = true);
         bool HandlePartyBotLoadCommand(char * args);
+        bool HandlePartyBotLoadPartyCommand(char* args);
         bool HandlePartyBotSetRoleCommand(char * args);
         bool HandlePartyBotAttackStartCommand(char * args);
         bool HandlePartyBotAttackStopCommand(char * args);
@@ -282,6 +284,10 @@ class ChatHandler
         bool HandlePartyBotClearMarksCommand(char * args);
         bool HandlePartyBotComeToMeCommand(char * args);
         bool HandlePartyBotUseGObjectCommand(char * args);
+        bool HandlePartyBotSelectCommand(char* args);
+        bool HandlePartyBotUnselectCommand(char* args);
+        bool HandlePartyBotMoveSectorCommand(char* args);
+        bool HandlePartyBotMoveFollowCommand(char* args);
         bool HandlePartyBotStayCommand(char* args);
         bool HandlePartyBotUnstayCommand(char* args);
         bool HandlePartyBotPauseCommand(char* args);
@@ -1088,6 +1094,8 @@ class ChatHandler
         bool HandleBanHelper(BanMode mode, char* args);
         bool HandleBanInfoHelper(uint32 accountid, char const* accountname);
         bool HandleUnBanHelper(BanMode mode, char* args);
+        std::set<PartyBotAI*> ChatHandler::MembersFromString(char* args);
+        bool HandlePartyBotSelectHelper(char* args, bool add);
         bool HandlePartyBotStayHelper(char* args, bool pause);
         bool HandlePartyBotPauseHelper(char* args, bool pause);
         void HandleCharacterLevel(Player* player, ObjectGuid player_guid, uint32 oldlevel, uint32 newlevel);

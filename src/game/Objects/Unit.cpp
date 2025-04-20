@@ -3704,6 +3704,8 @@ bool Unit::RemoveNoStackAurasDueToAuraHolder(SpellAuraHolder* holder)
         bool is_spellSpecPerTargetPerCaster = Spells::IsSingleFromSpellSpecificPerTargetPerCaster(spellId_spec, i_spellId_spec);
 
         bool is_spellSpecPerTarget = Spells::IsSingleFromSpellSpecificPerTarget(spellId_spec, i_spellId_spec);
+        if (m_stackTrackers && is_spellSpecPerTarget && spellId_spec == SPELL_TRACKER)
+            is_spellSpecPerTarget = false;
 
         // HoTs in 1.x must be per target also
         if (!is_spellSpecPerTarget && firstInChain && firstInChain == sSpellMgr.GetFirstSpellInChain(i_spellId))

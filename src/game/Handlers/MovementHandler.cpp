@@ -298,6 +298,14 @@ void WorldSession::HandleMovementOpcodes(WorldPacket& recvData)
     if (pMover->HasPendingSplineDone())
         return;
 
+    if (opcode != MSG_MOVE_STOP && opcode != MSG_MOVE_FALL_LAND && pMover->GetMotionMaster()->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE)
+    {
+        sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "MovementHandler - %s stopped follow", pMover->GetName());
+        pMover->StopMoving();
+        pMover->GetMotionMaster()->Clear(false, true);
+        pMover->GetMotionMaster()->MoveIdle();
+    }
+
     // currently being moved by server
     if (!pMover->movespline->Finalized())
         return;

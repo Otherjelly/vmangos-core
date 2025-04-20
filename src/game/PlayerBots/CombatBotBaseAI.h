@@ -122,7 +122,7 @@ public:
     bool AreOthersOnSameTarget(ObjectGuid guid, bool checkMelee = true, bool checkSpells = true) const;
 
     SpellCastResult DoCastSpell(Unit* pTarget, SpellEntry const* pSpellEntry);
-    virtual bool CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry) const;
+    virtual bool CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry, bool reapplyAura = false, bool checkAuraCaster = false, bool ignoreStacks = false) const;
     bool IsWearingShield(Player* pPlayer) const;
     bool IsInDuel() const;
     CombatBotRoles GetRole() const;
@@ -555,6 +555,9 @@ public:
     bool m_initialized = false;
     ObjectGuid m_leaderGuid;
     bool m_temporaryCharacter = true;
+    bool m_noClient = true;
+    bool m_noGenerateItems = false;
+    bool m_noTeleport = false;
     bool m_isBuffing = false;
     bool m_receivedBgInvite = false;
     uint8 m_visualHonorRank = 0;

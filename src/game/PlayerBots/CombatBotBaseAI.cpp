@@ -2748,7 +2748,7 @@ void CombatBotBaseAI::AutoEquipGear(uint32 option)
     UpdateVisualHonorRankBasedOnItems();
 }
 
-bool CombatBotBaseAI::CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry) const
+bool CombatBotBaseAI::CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry, bool ignoreAppliesAuraCheck, bool checkAuraCaster, bool ignoreStacks) const
 {
     if (!me->IsSpellReady(pSpellEntry->Id))
         return false;
@@ -2783,8 +2783,33 @@ bool CombatBotBaseAI::CanTryToCastSpell(Unit const* pTarget, SpellEntry const* p
     if (pSpellEntry->GetErrorAtShapeshiftedCast(me->GetShapeshiftForm()) != SPELL_CAST_OK)
         return false;
 
-    if (pSpellEntry->IsSpellAppliesAura() && pTarget->HasAura(pSpellEntry->Id))
-        return false;
+    if (!ignoreAppliesAuraCheck && pSpellEntry->IsSpellAppliesAura())
+    {
+        if (checkAuraCaster)
+        {
+            if (pTarget->GetSpellAuraHolder(pSpellEntry->Id, me->GetGUIDLow()))
+                return false;
+        }
+        else
+        {
+            if (pSpellEntry->StackAmount > 1)
+            {
+                if (!ignoreStacks)
+                {
+                    if (SpellAuraHolder* auraHolder = pTarget->GetSpellAuraHolder(pSpellEntry->Id))
+                    {
+                        if (auraHolder->GetStackAmount() >= pSpellEntry->StackAmount)
+                            return false;
+                    }
+                }
+            }
+            else
+            {
+                if (pTarget->HasAura(pSpellEntry->Id))
+                    return false;
+            }
+        }
+    }
 
     SpellRangeEntry const* srange = sSpellRangeStore.LookupEntry(pSpellEntry->rangeIndex);
     if (me != pTarget && pSpellEntry->EffectImplicitTargetA[0] != TARGET_UNIT_CASTER)
@@ -2802,7 +2827,11 @@ bool CombatBotBaseAI::CanTryToCastSpell(Unit const* pTarget, SpellEntry const* p
 
 SpellCastResult CombatBotBaseAI::DoCastSpell(Unit* pTarget, SpellEntry const* pSpellEntry)
 {
-    if (me != pTarget)
+    if (!pSpellEntry->IsNeedFaceTarget() && !pSpellEntry->IsPositiveSpell())
+        sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "%s negative spell doesn't need to face target %s", me->GetName(), pSpellEntry->SpellName[0].c_str());
+
+    float arc = me->IsMoving() ? M_PI_F : M_PI_F / 2; // Tighter arc for looks
+    if (me != pTarget && pSpellEntry->IsNeedFaceTarget() && !me->HasInArc(pTarget, arc))
         me->SetFacingToObject(pTarget);
 
     if (me->IsMounted())
@@ -2837,6 +2866,9 @@ SpellCastResult CombatBotBaseAI::DoCastSpell(Unit* pTarget, SpellEntry const* pS
 
 void CombatBotBaseAI::AddItemToInventory(uint32 itemId, uint32 count)
 {
+    if (m_noGenerateItems)
+        return;
+
     ItemPosCountVec dest;
     uint8 msg = me->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, count);
     if (msg == EQUIP_ERR_OK)

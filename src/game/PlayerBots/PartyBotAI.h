@@ -50,7 +50,7 @@ public:
     void CloneFromPlayer(Player const* pPlayer);
     void AddToPlayerGroup();
 
-    bool CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry) const final;
+    bool CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry, bool ignoreAppliesAuraCheck = false, bool checkAuraCaster = false, bool ignoreStacks = false) const final;
     Player* GetPartyLeader() const;
     bool AttackStart(Unit* pVictim);
     Unit* SelectAttackTarget(Player* pLeader) const;
