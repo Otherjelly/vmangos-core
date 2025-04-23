@@ -358,8 +358,7 @@ bool PartyBotAI::AttackStart(Unit* pVictim)
 
     if (me->Attack(pVictim, true))
     {
-        if ((GetRole() == ROLE_RANGE_DPS || GetRole() == ROLE_HEALER) &&
-            me->GetPowerPercent(POWER_MANA) > 10.0f) // && me->GetCombatDistance(pVictim) > 8.0f)
+        if ((GetRole() == ROLE_RANGE_DPS || GetRole() == ROLE_HEALER)) // && me->GetPowerPercent(POWER_MANA) > 10.0f && me->GetCombatDistance(pVictim) > 8.0f)
             me->SetCasterChaseDistance(25.0f);
         else if (me->HasDistanceCasterMovement())
             me->SetCasterChaseDistance(0.0f);
@@ -448,11 +447,100 @@ Unit* PartyBotAI::SelectPartyAttackTarget() const
 
             for (const auto pAttacker : pMember->GetAttackers())
             {
-                if (IsValidHostileTarget(pAttacker) &&
-                    me->IsWithinDist(pAttacker, 50.0f))
+                if (IsValidHostileTarget(pAttacker))
                     return pAttacker;
             }
         }
+    }
+
+    return nullptr;
+}
+
+Unit* PartyBotAI::SelectPartyDefendTarget() const
+{
+    Group* pGroup = me->GetGroup();
+    std::set<Unit*> otherTankVictims;
+    // TODO: Replace sets with priority list
+    std::set<Unit*> attackingHealer;
+    std::set<Unit*> attackingNonTank;
+    std::set<Unit*> attackingOtherTank;
+    for (GroupReference* itr = pGroup->GetFirstMember(); itr != nullptr; itr = itr->next())
+    {
+        if (Player* pMember = itr->getSource())
+        {
+            if (pMember == me)
+                continue;
+
+            bool isTank = false;    // TODO: Non-AI tank
+            bool isHealer = false;  // TODO: Non-AI healer
+            if (pMember->AI())
+            {
+                if (PartyBotAI* pAI = dynamic_cast<PartyBotAI*>(pMember->AI()))
+                {
+                    isTank = pAI->GetRole() == ROLE_TANK;
+                    isHealer = pAI->GetRole() == ROLE_HEALER;
+                }
+            }
+            if (isTank)
+            {
+                if (Unit* pTankVictim = pMember->GetVictim())
+                    otherTankVictims.insert(pTankVictim);
+            }
+
+            for (const auto pAttacker : pMember->GetAttackers())
+            {
+                if (isTank)
+                    attackingOtherTank.insert(pAttacker);
+                else if (isHealer)
+                    attackingHealer.insert(pAttacker);
+                else
+                    attackingNonTank.insert(pAttacker);
+            }
+        }
+    }
+
+    // Attackers attacking members that are healers, and aren't the victim of another tank
+    for (Unit* pAttacker : attackingHealer)
+    {
+        if (otherTankVictims.count(pAttacker) == 0 && IsValidHostileTarget(pAttacker))
+            return pAttacker;
+    }
+
+    // Attackers attacking members that aren't tanks/healers, and aren't the victim of another tank
+    for (Unit* pAttacker : attackingNonTank)
+    {
+        if (otherTankVictims.count(pAttacker) == 0 && IsValidHostileTarget(pAttacker))
+            return pAttacker;
+    }
+
+    // Attackers attacking members that are other tanks, and aren't the victim of another tank - with load balancing
+    uint32 attackingMe = static_cast<uint32>(me->GetAttackers().size());
+    Unit* bestCandidate = nullptr; // The one that helps balance the most
+    uint32 bestDelta = 1; // how many more mobs the other tank has
+    for (Unit* pAttacker : attackingOtherTank)
+    {
+        if (otherTankVictims.count(pAttacker) > 0)
+            continue;
+
+        Unit* victimTank = pAttacker->GetVictim();
+        uint32 attackingTank = static_cast<uint32>(victimTank->GetAttackers().size());
+
+        // Look for the attacker that closes the biggest attacker difference
+        if ((attackingTank > bestDelta + attackingMe) && IsValidHostileTarget(pAttacker))
+        {
+            bestDelta = attackingTank - attackingMe;
+            bestCandidate = pAttacker;
+        }
+    }
+    if (bestCandidate)
+        return bestCandidate;
+
+
+    // Attackers attacking me, and aren't the victim of another tank
+    for (Unit* pAttacker : me->GetAttackers())
+    {
+        if (otherTankVictims.count(pAttacker) == 0 && IsValidHostileTarget(pAttacker))
+            return pAttacker;
     }
 
     return nullptr;
@@ -981,7 +1069,7 @@ void PartyBotAI::UpdateInCombatAI()
             // Defend party members.
             if (!pVictim || pVictim->GetVictim() == me)
             {
-                if (pVictim = SelectPartyAttackTarget())
+                if (pVictim = SelectPartyDefendTarget())
                 {
                     me->AttackStop(true);
                     AttackStart(pVictim);

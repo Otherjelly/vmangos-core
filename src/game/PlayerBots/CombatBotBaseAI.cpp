@@ -2120,6 +2120,7 @@ bool CombatBotBaseAI::FindAndPreHealTarget()
 bool CombatBotBaseAI::IsValidHostileTarget(Unit const* pTarget) const
 {
     return me->IsValidAttackTarget(pTarget) &&
+           me->IsWithinDist(pTarget, 50.0f) &&
            pTarget->IsVisibleForOrDetect(me, me, false) &&
            !pTarget->HasBreakableByDamageCrowdControlAura() &&
            !pTarget->IsTotalImmune() &&
