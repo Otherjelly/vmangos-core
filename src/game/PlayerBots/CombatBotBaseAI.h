@@ -278,7 +278,8 @@ public:
     }
 
     SpellEntry const* m_resurrectionSpell = nullptr;
-    std::vector<SpellEntry const*> m_spellListTaunt;
+    SpellEntry const* m_tauntSpell = nullptr;   // Full
+    std::vector<SpellEntry const*> m_spellListTaunt;    // Full & temporary
     std::set<SpellEntry const*, HealAuraCompare> m_spellListPeriodicHeal;
     std::set<SpellEntry const*, HealSpellCompare> m_spellListDirectHeal;
     union
@@ -292,6 +293,9 @@ public:
             SpellEntry const* pAura;
             SpellEntry const* pSeal;
             SpellEntry const* pBlessingBuff;
+            SpellEntry const* pBlessingBuffMelee;
+            SpellEntry const* pBlessingBuffRanged;
+            SpellEntry const* pBlessingBuffTank;
             SpellEntry const* pBlessingOfProtection;
             SpellEntry const* pBlessingOfFreedom;
             SpellEntry const* pBlessingOfSacrifice;
@@ -309,6 +313,27 @@ public:
             SpellEntry const* pHolyWrath;
             SpellEntry const* pTurnEvil;
             SpellEntry const* pHolyShield;
+            // Paladin Seals
+            SpellEntry const* pSealOfRighteousness;
+            SpellEntry const* pSealOfCommand;
+            SpellEntry const* pSealOfFury;
+            SpellEntry const* pSealOfLight;
+            SpellEntry const* pSealOfWisdom;
+            // Paladin Blessings
+            SpellEntry const* pBlessingOfLight;
+            SpellEntry const* pBlessingOfMight;
+            SpellEntry const* pBlessingOfWisdom;
+            SpellEntry const* pBlessingOfKings;
+            SpellEntry const* pBlessingOfSanctuary;
+            SpellEntry const* pBlessingOfSalvation;
+            // Paladin Auras
+            SpellEntry const* pDevotionAura;
+            SpellEntry const* pConcentrationAura;
+            SpellEntry const* pRetributionAura;
+            SpellEntry const* pSanctityAura;
+            SpellEntry const* pShadowResistanceAura;
+            SpellEntry const* pFrostResistanceAura;
+            SpellEntry const* pFireResistanceAura;
         } paladin;
         struct
         {
@@ -333,6 +358,7 @@ public:
         } shaman;
         struct
         {
+            SpellEntry const* pTrueshotAura;
             SpellEntry const* pAspectOfTheCheetah;
             SpellEntry const* pAspectOfTheMonkey;
             SpellEntry const* pAspectOfTheHawk;
@@ -349,16 +375,22 @@ public:
             SpellEntry const* pFeignDeath;
             SpellEntry const* pScareBeast;
             SpellEntry const* pVolley;
+            SpellEntry const* pDismissPet;
+            SpellEntry const* pTranquilizingShot;
+            SpellEntry const* pRapidFire;
+            SpellEntry const* pViperSting;
         } hunter;
         struct
         {
             SpellEntry const* pIceArmor;
+            SpellEntry const* pMageArmor;
             SpellEntry const* pArcaneIntellect;
             SpellEntry const* pArcaneBrilliance;
             SpellEntry const* pIceBarrier;
             SpellEntry const* pManaShield;
             SpellEntry const* pPolymorph;
             SpellEntry const* pFrostbolt;
+            SpellEntry const* pFrostboltLow;
             SpellEntry const* pFireBlast;
             SpellEntry const* pFireball;
             SpellEntry const* pArcaneExplosion;
@@ -374,13 +406,23 @@ public:
             SpellEntry const* pEvocation;
             SpellEntry const* pIceBlock;
             SpellEntry const* pBlizzard;
+            SpellEntry const* pBlizzardLow;
             SpellEntry const* pBlastWave;
             SpellEntry const* pCombustion;
+            SpellEntry const* pAmplifyMagic;
+            SpellEntry const* pFireWard;
+            SpellEntry const* pFrostWard;
+            SpellEntry const* pConjureManaAgate;
+            SpellEntry const* pConjureManaJade;
+            SpellEntry const* pConjureManaCitrine;
+            SpellEntry const* pConjureManaRuby;
+            SpellEntry const* pArcaneMissiles;
         } mage;
         struct
         {
             SpellEntry const* pPowerWordFortitude;
             SpellEntry const* pDivineSpirit;
+            SpellEntry const* pPrayerofHealing;
             SpellEntry const* pPrayerofSpirit;
             SpellEntry const* pPrayerofFortitude;
             SpellEntry const* pPrayerofShadowProtection;
@@ -393,6 +435,7 @@ public:
             SpellEntry const* pMindFlay;
             SpellEntry const* pShadowWordPain;
             SpellEntry const* pInnerFocus;
+            SpellEntry const* pCureDisease;
             SpellEntry const* pAbolishDisease;
             SpellEntry const* pDispelMagic;
             SpellEntry const* pManaBurn;
@@ -404,11 +447,15 @@ public:
             SpellEntry const* pFade;
             SpellEntry const* pShackleUndead;
             SpellEntry const* pSmite;
+            SpellEntry const* pFearWard;
+            SpellEntry const* pRenew;
         } priest;
         struct
         {
             SpellEntry const* pDemonArmor;
             SpellEntry const* pDeathCoil;
+            SpellEntry const* pUnendingBreath;
+            SpellEntry const* pDetectLesserInvisibility;
             SpellEntry const* pDetectInvisibility;
             SpellEntry const* pShadowWard;
             SpellEntry const* pShadowBolt;
@@ -421,6 +468,7 @@ public:
             SpellEntry const* pDemonicSacrifice;
             SpellEntry const* pDrainLife;
             SpellEntry const* pSiphonLife;
+            SpellEntry const* pDrainMana;
             SpellEntry const* pBanish;
             SpellEntry const* pFear;
             SpellEntry const* pHowlofTerror;
@@ -432,6 +480,7 @@ public:
             SpellEntry const* pCurseofTongues;
             SpellEntry const* pCurseofExhaustion;
             SpellEntry const* pLifeTap;
+            SpellEntry const* pRitualOfSummoning;
         } warlock;
         struct
         {
@@ -469,6 +518,10 @@ public:
             SpellEntry const* pSunderArmor;
             SpellEntry const* pConcussionBlow;
             SpellEntry const* pPiercingHowl;
+            SpellEntry const* pRevenge;
+            SpellEntry const* pShootGun;
+            SpellEntry const* pShootBow;
+            SpellEntry const* pShootCrossbow;
         } warrior;
         struct
         {
@@ -497,6 +550,7 @@ public:
             SpellEntry const* pRiposte;
             SpellEntry const* pKick;
             SpellEntry const* pSprint;
+            SpellEntry const* pFeint;
             SpellEntry const* pMainHandPoison;
             SpellEntry const* pOffHandPoison;
         } rogue;
