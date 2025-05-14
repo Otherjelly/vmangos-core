@@ -405,11 +405,12 @@ bool PartyBotAI::CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpell
 
     if (pSpellEntry->IsAreaOfEffectSpell() && !pSpellEntry->IsPositiveSpell() && !IsInDuel())
     {
+        // TODO: Healing + Buff/Debuff AOE (i.e. won't break cc)
         if (CrowdControledMarkedTargetsExistNear(pTarget))
             return false;
 
         // do not cast aoe if it will pull aggro
-        if (m_role != ROLE_TANK)
+        if (m_role != ROLE_TANK && ExistsByRole(ROLE_TANK, true))
         {
             float radius;
             if (pSpellEntry->EffectRadiusIndex[0])
@@ -428,22 +429,16 @@ bool PartyBotAI::CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpell
 
             for (auto const& pEnemy : targets)
             {
-                if (!pEnemy->IsInCombat())
+                if ((pEnemy->GetLevel() + 5) <= me->GetLevel() || !pEnemy->IsValidAttackTarget(me) || !pEnemy->CanHaveThreatList())
+                    continue;
+
+                if (pEnemy->GetThreatManager().getThreatList().empty())
                     return false;
 
-                if (((pEnemy->GetLevel() + 5) > me->GetLevel()) &&
-                    //((pEnemy->GetHealth() * 4) > me->GetHealth()) &&
-                    pEnemy->GetVictim() && pEnemy->GetVictim() != me &&
-                    pEnemy->IsValidAttackTarget(me) &&
-                    pEnemy->CanHaveThreatList())
-                {
-                    float const myThreat = pEnemy->GetThreatManager().getThreat(me);
-                    float const victimThreat = pEnemy->GetThreatManager().getThreat(pEnemy->GetVictim());
-                    
-                    //if (victimThreat < (myThreat + me->GetMaxHealth()))
-                    if (victimThreat < (myThreat + me->GetLevel() * 5.0f))
-                        return false;
-                }
+                float const myThreat = pEnemy->GetThreatManager().getThreat(me);
+                float const victimThreat = pEnemy->GetThreatManager().getThreat(pEnemy->GetVictim());
+                if (victimThreat < (myThreat + me->GetLevel() * 5.0f))
+                    return false;
             }
         }
     }
@@ -692,7 +687,6 @@ Unit* PartyBotAI::SelectPartyDefendTarget() const
     }
     if (bestCandidate)
         return bestCandidate;
-
 
     // Attackers attacking me, and aren't the victim of another tank
     Unit* pFound = nullptr;
@@ -1114,19 +1108,9 @@ void PartyBotAI::UpdateAI(uint32 const diff)
     }
 
     Unit* pVictim = me->GetVictim();
-
     if (pVictim)
     {
-        if (!IsValidHostileTarget(pVictim))
-        {
-            me->AttackStop();
-            if (Unit* pTarget = SelectAttackTarget(pLeader))
-            {
-                AttackStart(pTarget);
-                return;
-            }
-        }
-        else if (!CheckThreatOK(pVictim))
+        if (GetRole() != ROLE_TANK)
         {
             if (Unit* pTarget = SelectAttackTarget(pLeader))
             {
