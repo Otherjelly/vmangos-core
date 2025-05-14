@@ -1483,7 +1483,7 @@ bool ChatHandler::HandlePartyBotClearMarksCommand(char* args)
     return true;
 }
 
-bool HandlePartyBotComeToMeHelper(Player* pBot, Player* pPlayer)
+bool HandlePartyBotComeToMeHelper(Player* pBot, Player* pPlayer, bool pathing)
 {
     if (pBot->AI() && pBot->IsAlive() && pBot->IsInMap(pPlayer) && !pBot->HasUnitState(UNIT_STATE_NO_FREE_MOVE))
     {
@@ -1496,8 +1496,10 @@ bool HandlePartyBotComeToMeHelper(Player* pBot, Player* pPlayer)
                 pBot->SetStandState(UNIT_STAND_STATE_STAND);
 
             pBot->InterruptSpellsWithInterruptFlags(SPELL_INTERRUPT_FLAG_MOVEMENT);
-            //pBot->MonsterMove(pPlayer->GetPositionX(), pPlayer->GetPositionY(), pPlayer->GetPositionZ());
-            pBot->MonsterMoveWithSpeed(pPlayer->GetPositionX(), pPlayer->GetPositionY(), pPlayer->GetPositionZ(), -10.0f, pBot->GetSpeed(MOVE_RUN), MOVE_PATHFINDING | MOVE_RUN_MODE);
+            if (pathing)
+                pBot->MonsterMoveWithSpeed(pPlayer->GetPositionX(), pPlayer->GetPositionY(), pPlayer->GetPositionZ(), -10.0f, pBot->GetSpeed(MOVE_RUN), MOVE_PATHFINDING | MOVE_RUN_MODE);
+            else
+                pBot->MonsterMove(pPlayer->GetPositionX(), pPlayer->GetPositionY(), pPlayer->GetPositionZ());
             return true;
         }
     }
@@ -1513,10 +1515,25 @@ bool ChatHandler::HandlePartyBotComeToMeCommand(char* args)
     {
         if (Player* pMember = pAI->me)
         {
-            HandlePartyBotComeToMeHelper(pMember, pPlayer);
+            HandlePartyBotComeToMeHelper(pMember, pPlayer, false);
         }
     }
     PSendSysMessage("%d party bots are coming to your position.", matchingBots.size());
+    return true;
+}
+
+bool ChatHandler::HandlePartyBotPathToMeCommand(char* args)
+{
+    Player* pPlayer = GetSession()->GetPlayer();
+    std::set<PartyBotAI*> matchingBots = MembersFromString(args);
+    for (PartyBotAI* pAI : matchingBots)
+    {
+        if (Player* pMember = pAI->me)
+        {
+            HandlePartyBotComeToMeHelper(pMember, pPlayer, true);
+        }
+    }
+    PSendSysMessage("%d party bots are pathing to your position.", matchingBots.size());
     return true;
 }
 
@@ -2168,34 +2185,14 @@ bool ChatHandler::HandlePartyBotUnequipCommand(char* args)
 
 bool ChatHandler::HandlePartyBotRemoveCommand(char* args)
 {
-    Player* pTarget = GetSelectedPlayer();
-    if (!pTarget)
+    std::set<PartyBotAI*> matchingBots = MembersFromString(args);
+    for (PartyBotAI* pAI : matchingBots)
     {
-        pTarget = m_session->GetPlayer();
-        if (pTarget)
-        {
-            SendSysMessage("Using current player as bot to remove");
-        }
-        else
-        {
-            SendSysMessage(LANG_NO_CHAR_SELECTED);
-            SetSentErrorMessage(true);
-            return false;
-        }
+        pAI->botEntry->requestRemoval = true;
     }
 
-    if (pTarget->AI())
-    {
-        if (PartyBotAI* pAI = dynamic_cast<PartyBotAI*>(pTarget->AI()))
-        {
-            pAI->botEntry->requestRemoval = true;
-            return true;
-        }
-    }
-
-    SendSysMessage("Target is not a party bot.");
-    SetSentErrorMessage(true);
-    return false;
+    PSendSysMessage("%d party bots removed.", matchingBots.size());
+    return true;
 }
 
 bool ChatHandler::HandleBattleBotAddAlteracCommand(char* args)

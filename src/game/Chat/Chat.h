@@ -283,7 +283,8 @@ class ChatHandler
         bool HandlePartyBotFocusMarkCommand(char * args);
         bool HandlePartyBotClearMarksCommand(char * args);
         bool HandlePartyBotComeToMeCommand(char * args);
-        bool HandlePartyBotUseGObjectCommand(char * args);
+        bool HandlePartyBotPathToMeCommand(char* args);
+        bool HandlePartyBotUseGObjectCommand(char* args);
         bool HandlePartyBotSelectCommand(char* args);
         bool HandlePartyBotUnselectCommand(char* args);
         bool HandlePartyBotMoveSectorCommand(char* args);

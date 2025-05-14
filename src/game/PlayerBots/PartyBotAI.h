@@ -50,22 +50,28 @@ public:
     void CloneFromPlayer(Player const* pPlayer);
     void AddToPlayerGroup();
 
+    bool ExistsByRole(CombatBotRoles role, bool mustBeAlive) const;
+    bool CheckThreatOK(Unit const* pTarget, SpellEntry const* pSpellEntry = nullptr) const;
     bool CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry, bool ignoreAppliesAuraCheck = false, bool checkAuraCaster = false, bool ignoreStacks = false) const final;
     Player* GetPartyLeader() const;
     bool AttackStart(Unit* pVictim);
     Unit* SelectAttackTarget(Player* pLeader) const;
     Unit* SelectPartyAttackTarget() const;
+    Unit* SelectDispelAttackerTarget(SpellEntry const* pSpellEntry) const;
     Unit* SelectPartyDefendTarget() const;
     Player* SelectResurrectionTarget() const;
     Player* SelectShieldTarget() const;
     Unit* GetMarkedTarget(RaidTargetIcon mark) const;
     bool CanUseCrowdControl(SpellEntry const* pSpellEntry, Unit* pTarget) const;
+    bool CrowdControledMarkedTargetsExistNear(Unit const* pTarget, float radius = 15.0f) const;
     bool DrinkAndEat();
     bool ShouldAutoRevive() const;
     bool IsValidDistancingTarget(Unit* pTarget, Unit* pEnemy);
     Unit* GetDistancingTarget(Unit* pEnemy);
     bool RunAwayFromTarget(Unit* pEnemy);
     void MoveChase(Unit* target, float dist = 0.0f, float angle = 0.0f);
+    void MovePointNear(float x, float y, float z, Unit* pVictim = nullptr);
+    bool StayBehind(Unit* pVictim);
     bool CrowdControlMarkedTargets();
     bool EnterCombatDruidForm();
     bool ShouldEnterStealth() const;

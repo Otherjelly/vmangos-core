@@ -130,6 +130,12 @@ public:
     void EquipOrUseNewItem();
     void AddItemToInventory(uint32 itemId, uint32 count = 1);
     void AddHunterAmmo();
+    uint32 CountInventoryItem(uint32 entry);
+    uint32 CountInventoryItem(SpellEntry const* spellEntry);
+    Item* GetInventoryItem(uint32 entry);
+    Item* GetInventoryItem(SpellEntry const* spellEntry);
+    bool CanTryToCastItemUseSpell(Item* pItem);
+    void UseConsumable(Item* pItem);
     uint8 GetHighestHonorRankFromEquippedItems() const;
     void UpdateVisualHonorRankBasedOnItems();
 
@@ -416,6 +422,8 @@ public:
             SpellEntry const* pConjureManaJade;
             SpellEntry const* pConjureManaCitrine;
             SpellEntry const* pConjureManaRuby;
+            SpellEntry const* pConjureWater;
+            SpellEntry const* pConjureFood;
             SpellEntry const* pArcaneMissiles;
         } mage;
         struct
@@ -551,6 +559,7 @@ public:
             SpellEntry const* pKick;
             SpellEntry const* pSprint;
             SpellEntry const* pFeint;
+            SpellEntry const* pPickPocket;
             SpellEntry const* pMainHandPoison;
             SpellEntry const* pOffHandPoison;
         } rogue;

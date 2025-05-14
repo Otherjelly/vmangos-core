@@ -9,6 +9,7 @@
 #include "Spell.h"
 #include "SpellAuras.h"
 #include "Chat.h"
+#include "Bag.h"
 #include "CharacterDatabaseCache.h"
 #include <random>
 
@@ -921,6 +922,16 @@ void CombatBotBaseAI::PopulateSpellData()
                     if (IsHigherRankSpell(m_spells.mage.pConjureManaRuby))
                         m_spells.mage.pConjureManaRuby = pSpellEntry;
                 }
+                else if (pSpellEntry->SpellName[0].find("Conjure Water") != std::string::npos)
+                {
+                    if (IsHigherRankSpell(m_spells.mage.pConjureWater))
+                        m_spells.mage.pConjureWater = pSpellEntry;
+                }
+                else if (pSpellEntry->SpellName[0].find("Conjure Food") != std::string::npos)
+                {
+                    if (IsHigherRankSpell(m_spells.mage.pConjureFood))
+                        m_spells.mage.pConjureFood = pSpellEntry;
+                }
                 else if (pSpellEntry->SpellName[0].find("Arcane Missiles") != std::string::npos)
                 {
                     if (IsHigherRankSpell(m_spells.mage.pArcaneMissiles))
@@ -1547,6 +1558,11 @@ void CombatBotBaseAI::PopulateSpellData()
                     if (IsHigherRankSpell(m_spells.rogue.pFeint))
                         m_spells.rogue.pFeint = pSpellEntry;
                 }
+                else if (pSpellEntry->SpellName[0].find("Pick Pocket") != std::string::npos)
+                {
+                    if (IsHigherRankSpell(m_spells.rogue.pPickPocket))
+                        m_spells.rogue.pPickPocket = pSpellEntry;
+                }
                 else if (pSpellEntry->SpellName[0].find("Deadly Poison") != std::string::npos)
                 {
                     hasDeadlyPoison = true;
@@ -2077,6 +2093,27 @@ bool CombatBotBaseAI::FindAndHealInjuredAlly(float selfHealPercent, float groupH
     return HealInjuredTarget(pTarget);
 }
 
+static float CalculateHealValue(Player const* me, Unit const* pVictim, SpellEntry const* pSpellEntry, bool ignorePeriodic = false)
+{
+    int32 basePoints = 0;
+    for (uint32 i = 0; i < MAX_SPELL_EFFECTS; i++)
+    {
+        switch (pSpellEntry->Effect[i])
+        {
+        case SPELL_EFFECT_HEAL:
+            basePoints += pSpellEntry->EffectBasePoints[i];
+            break;
+        case SPELL_EFFECT_APPLY_AURA:
+        case SPELL_EFFECT_PERSISTENT_AREA_AURA:
+        case SPELL_EFFECT_APPLY_AREA_AURA_PARTY:
+            if (!ignorePeriodic && pSpellEntry->EffectApplyAuraName[i] == SPELL_AURA_PERIODIC_HEAL)
+                basePoints += ((pSpellEntry->GetDuration() / pSpellEntry->EffectAmplitude[i]) * pSpellEntry->EffectBasePoints[i]);
+            break;
+        }
+    }
+    return basePoints;
+}
+
 template <class T>
 SpellEntry const* CombatBotBaseAI::SelectMostEfficientHealingSpell(Unit const* pTarget, std::set<SpellEntry const*, T>& spellList) const
 {
@@ -2086,40 +2123,50 @@ SpellEntry const* CombatBotBaseAI::SelectMostEfficientHealingSpell(Unit const* p
 template <class T>
 SpellEntry const* CombatBotBaseAI::SelectMostEfficientHealingSpell(Unit const* pTarget, int32 missingHealth, std::set<SpellEntry const*, T>& spellList) const
 {
+    float healRequired = missingHealth;
     SpellEntry const* pHealSpell = nullptr;
-    int32 healthDiff = INT32_MAX;
+    uint32 healCost = 0;
+    float healAmmount = 0.0f;
 
     // Find most efficient healing spell.
-    for (const auto pSpellEntry : spellList)
+    for (const SpellEntry* pSpellEntry : spellList)
     {
+        if (pTarget != me)
+        {
+            bool onlyselfcast = true;
+            for (uint32 i = 0; i < 3 && onlyselfcast; ++i)
+            {
+                if (pSpellEntry->EffectImplicitTargetA[i] != TARGET_UNIT_CASTER)
+                        onlyselfcast = false;
+            }
+            if (onlyselfcast)
+                continue;
+        }
+
         if (CanTryToCastSpell(pTarget, pSpellEntry))
         {
-            int32 basePoints = 0;
-            for (uint32 i = 0; i < MAX_SPELL_EFFECTS; i++)
+            float basePoints = CalculateHealValue(me, pTarget, pSpellEntry);
+
+            // Healing is sufficient but not too much? - This will find cheapest spell to heal >= 80% of missing health
+            if (basePoints >= (healRequired * 0.8f))
             {
-                switch (pSpellEntry->Effect[i])
+                uint32 cost = Spell::CalculatePowerCost(pSpellEntry, me);
+                if (cost <= 0)
                 {
-                    case SPELL_EFFECT_HEAL:
-                        basePoints += pSpellEntry->EffectBasePoints[i];
-                        break;
-                    case SPELL_EFFECT_APPLY_AURA:
-                    case SPELL_EFFECT_PERSISTENT_AREA_AURA:
-                    case SPELL_EFFECT_APPLY_AREA_AURA_PARTY:
-                        if (pSpellEntry->EffectApplyAuraName[i] == SPELL_AURA_PERIODIC_HEAL)
-                            basePoints += ((pSpellEntry->GetDuration() / pSpellEntry->EffectAmplitude[i]) * pSpellEntry->EffectBasePoints[i]);
-                        break;
+                        cost = 1;
+                }
+                // sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "SelectMostEfficientHealingSpell - %s healing %s considering %s %d missing %d healing %f cost %d", me->GetName(), pTarget->GetName(), pSpellEntry->SpellName[0].c_str(), pSpellEntry->GetRank(), missingHealth, basePoints, cost);
+
+                if (!pHealSpell || (cost < healCost))
+                {
+                        pHealSpell = pSpellEntry;
+                        healCost = cost;
+                        healAmmount = basePoints;
                 }
             }
 
-            int32 const diff = basePoints - missingHealth;
-            if (std::abs(diff) < healthDiff)
-            {
-                healthDiff = diff;
-                pHealSpell = pSpellEntry;
-            }
-
             // Healing spells are sorted from strongest to weakest.
-            if (diff < 0)
+            if (pHealSpell && basePoints < (healRequired / 2))
                 break;
         }
     }
@@ -2988,6 +3035,17 @@ bool CombatBotBaseAI::CanTryToCastSpell(Unit const* pTarget, SpellEntry const* p
     if (pSpellEntry->GetErrorAtShapeshiftedCast(me->GetShapeshiftForm()) != SPELL_CAST_OK)
         return false;
 
+    if (pSpellEntry->IsReflectableSpell())
+    {
+        int32 reflectchance = pTarget->GetTotalAuraModifier(SPELL_AURA_REFLECT_SPELLS);
+        Unit::AuraList const& mReflectSpellsSchool = pTarget->GetAurasByType(SPELL_AURA_REFLECT_SPELLS_SCHOOL);
+        for (const auto i : mReflectSpellsSchool)
+            if (i->GetModifier()->m_miscvalue & pSpellEntry->GetSpellSchoolMask())
+                reflectchance += i->GetModifier()->m_amount;
+        if (reflectchance > 10)
+            return false;
+    }
+
     if (!ignoreAppliesAuraCheck && pSpellEntry->IsSpellAppliesAura())
     {
         if (checkAuraCaster)
@@ -3032,24 +3090,27 @@ bool CombatBotBaseAI::CanTryToCastSpell(Unit const* pTarget, SpellEntry const* p
 
 SpellCastResult CombatBotBaseAI::DoCastSpell(Unit* pTarget, SpellEntry const* pSpellEntry)
 {
-    if (!pSpellEntry->IsNeedFaceTarget() && !pSpellEntry->IsPositiveSpell())
-        sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "%s negative spell doesn't need to face target %s", me->GetName(), pSpellEntry->SpellName[0].c_str());
-
-    float arc = me->IsMoving() ? M_PI_F : M_PI_F / 2; // Tighter arc for looks
+    float arc = me->IsMoving() ? M_PI_F : M_PI_F / 4;
     if (me != pTarget && pSpellEntry->IsNeedFaceTarget() && !me->HasInArc(pTarget, arc))
         me->SetFacingToObject(pTarget);
 
     if (me->IsMounted())
         me->RemoveSpellsCausingAura(SPELL_AURA_MOUNTED);
 
-    me->SetTargetGuid(pTarget->GetObjectGuid());
+    // Avoid stopping auto-attack on our victim when the spell target isn't the victim and we're not required to change target (e.g. casting shield block on self, or blind other target)..
+    ObjectGuid previousTarget = me->GetTargetGuid();
+    uint32 castTime = pSpellEntry->GetCastTime(me);
+    bool changeTargetGuid = (castTime > 0);
+    if (changeTargetGuid)
+        me->SetTargetGuid(pTarget->GetObjectGuid());
+
     auto result = me->CastSpell(pTarget, pSpellEntry, false);
 
     //printf("cast %s result %u\n", pSpellEntry->SpellName[0].c_str(), result);
 
     if ((result == SPELL_FAILED_MOVING ||
         result == SPELL_CAST_OK) &&
-        (pSpellEntry->GetCastTime(me) > 0) &&
+        (pSpellEntry->GetCastTime(me) > 0 || pSpellEntry->IsChanneledSpell()) &&
         (me->IsMoving() || !me->IsStopped()))
         me->StopMoving();
 
@@ -3065,6 +3126,9 @@ SpellCastResult CombatBotBaseAI::DoCastSpell(Unit* pTarget, SpellEntry const* pS
 
         AddItemToInventory(pSpellEntry->Reagent[0]);
     }
+
+    if (changeTargetGuid && (result != SPELL_CAST_OK))
+        me->SetTargetGuid(previousTarget);
 
     return result;
 }
@@ -3177,6 +3241,110 @@ void CombatBotBaseAI::EquipOrUseNewItem()
                 }
             }
         }
+    }
+}
+
+template <typename Func>
+void ForEachInventoryItem(Player* pPlayer, uint32 entry, Func&& func)
+{
+    for (int i = INVENTORY_SLOT_ITEM_START; i < INVENTORY_SLOT_ITEM_END; ++i)
+    {
+        if (Item* pItem = pPlayer->GetItemByPos(INVENTORY_SLOT_BAG_0, i))
+        {
+            if (pItem->GetEntry() == entry && func(pItem))
+                return;
+        }
+    }
+
+    for (int i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; ++i)
+    {
+        if (Bag* pBag = static_cast<Bag*>(pPlayer->GetItemByPos(INVENTORY_SLOT_BAG_0, i)))
+        {
+            for (uint32 j = 0; j < pBag->GetBagSize(); ++j)
+            {
+                if (Item* pItem = pBag->GetItemByPos(j))
+                {
+                    if (pItem->GetEntry() == entry && func(pItem))
+                        return;
+                }
+            }
+        }
+    }
+}
+
+uint32 CombatBotBaseAI::CountInventoryItem(uint32 entry)
+{
+    uint32 count = 0;
+    ForEachInventoryItem(me, entry, [&count](Item* pItem)
+    {
+        count += pItem->GetCount();
+        return false; // iterate over all inventory items
+    });
+    return count;
+}
+
+uint32 CombatBotBaseAI::CountInventoryItem(SpellEntry const* spellEntry)
+{
+    // TODO: Hard-code map of known spell->item for speed, e.g. conjure water spell->item
+    if (spellEntry->EffectItemType[0])
+        return CountInventoryItem(spellEntry->EffectItemType[0]);  
+    else if (uint32 triggerSpellId = spellEntry->EffectTriggerSpell[0])
+    {
+        SpellEntry const* triggerSpellEntry = sSpellMgr.GetSpellEntry(triggerSpellId);
+        if (triggerSpellEntry && triggerSpellEntry->EffectItemType[0])
+            return CountInventoryItem(triggerSpellEntry->EffectItemType[0]);  
+    }
+    return 0;
+}
+
+Item* CombatBotBaseAI::GetInventoryItem(uint32 entry)
+{
+    Item* result = nullptr;
+    ForEachInventoryItem(me, entry, [&result](Item* pItem)
+    {
+        result = pItem;
+        return true; // stop iteration at first match
+    });
+    return result;
+}
+
+Item* CombatBotBaseAI::GetInventoryItem(SpellEntry const* spellEntry)
+{
+    return GetInventoryItem(spellEntry->EffectItemType[0]);
+}
+
+bool CombatBotBaseAI::CanTryToCastItemUseSpell(Item* pItem)
+{
+    ItemPrototype const* proto = pItem->GetProto();
+    for (const auto& spellData : proto->Spells)
+    {
+        // no spell
+        if (!spellData.SpellId)
+            continue;
+
+        // wrong triggering type
+        if (spellData.SpellTrigger != ITEM_SPELLTRIGGER_ON_USE)
+            continue;
+
+        if (!me->IsSpellReady(spellData.SpellId, proto))
+            return false;
+    }
+    return true;
+}
+
+void CombatBotBaseAI::UseConsumable(Item* pItem)
+{
+    if (pItem)
+    {
+        // Mana Agate (consumable) is ITEM_CLASS_ARMOR so just log if unexpected class...
+        if (pItem->GetProto()->Class != ITEM_CLASS_CONSUMABLE)
+        {
+            sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "%s using %d non-consumable class %d", me->GetName(), pItem->GetEntry(), pItem->GetProto()->Class);
+        }
+
+        SpellCastTargets targets;
+        targets.setUnitTarget(me);
+        me->CastItemUseSpell(pItem, targets);
     }
 }
 
