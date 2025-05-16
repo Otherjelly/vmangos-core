@@ -2127,19 +2127,21 @@ SpellEntry const* CombatBotBaseAI::SelectMostEfficientHealingSpell(Unit const* p
     SpellEntry const* pHealSpell = nullptr;
     uint32 healCost = 0;
     float healAmmount = 0.0f;
+    SpellEntry const* pBiggestSpell = nullptr;
+    float biggestHeal = 0.0f;
 
     // Find most efficient healing spell.
     for (const SpellEntry* pSpellEntry : spellList)
     {
         if (pTarget != me)
         {
-            bool onlyselfcast = true;
-            for (uint32 i = 0; i < 3 && onlyselfcast; ++i)
+            bool onlySelfCast = true;
+            for (uint32 i = 0; i < 3 && onlySelfCast; ++i)
             {
-                if (pSpellEntry->EffectImplicitTargetA[i] != TARGET_UNIT_CASTER)
-                        onlyselfcast = false;
+                if (pSpellEntry->EffectImplicitTargetA[i] != TARGET_UNIT_CASTER && pSpellEntry->EffectImplicitTargetA[i] != TARGET_NONE)
+                    onlySelfCast = false;
             }
-            if (onlyselfcast)
+            if (onlySelfCast)
                 continue;
         }
 
@@ -2165,11 +2167,28 @@ SpellEntry const* CombatBotBaseAI::SelectMostEfficientHealingSpell(Unit const* p
                 }
             }
 
+            if (basePoints > biggestHeal)
+            {
+                biggestHeal = basePoints;
+                pBiggestSpell = pSpellEntry;
+            }
+
             // Healing spells are sorted from strongest to weakest.
-            if (pHealSpell && basePoints < (healRequired / 2))
-                break;
+            if (pHealSpell)
+            {
+                if (basePoints < (healRequired / 2))
+                    break;
+            }
+            else if (pBiggestSpell)
+            {
+                if (basePoints < (biggestHeal / 2))
+                    break;
+            }
         }
     }
+
+    if (!pHealSpell)
+        pHealSpell = pBiggestSpell;
 
     return pHealSpell;
 }

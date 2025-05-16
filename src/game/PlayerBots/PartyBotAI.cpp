@@ -405,12 +405,21 @@ bool PartyBotAI::CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpell
 
     if (pSpellEntry->IsAreaOfEffectSpell() && !pSpellEntry->IsPositiveSpell() && !IsInDuel())
     {
-        // TODO: Healing + Buff/Debuff AOE (i.e. won't break cc)
-        if (CrowdControledMarkedTargetsExistNear(pTarget))
+        bool doesDamage = false;
+        for (uint8 i = 0; i < MAX_EFFECT_INDEX; ++i)
+        {
+            if (Spells::IsDirectDamageEffect(pSpellEntry->Effect[i]) || pSpellEntry->EffectApplyAuraName[i] == SPELL_AURA_PERIODIC_DAMAGE)
+            {
+                doesDamage = true;
+                break;
+            }
+        }
+
+        if (doesDamage && CrowdControledMarkedTargetsExistNear(pTarget))
             return false;
 
         // do not cast aoe if it will pull aggro
-        if (m_role != ROLE_TANK && ExistsByRole(ROLE_TANK, true))
+        if (m_role != ROLE_TANK && doesDamage && ExistsByRole(ROLE_TANK, true))
         {
             float radius;
             if (pSpellEntry->EffectRadiusIndex[0])
@@ -2134,7 +2143,9 @@ void PartyBotAI::UpdateInCombatAI_Mage()
             }
         }
 
-        if (me->GetEnemyCountInRadiusAround(me, 10.0f) > 2)
+        uint8 enemyCountAroundMe = me->GetEnemyCountInRadiusAround(me, 10.0f);
+        uint8 enemyCountAroundVictim = me->GetEnemyCountInRadiusAround(pVictim, 10.0f);
+        if (enemyCountAroundMe > 2 && enemyCountAroundMe > enemyCountAroundVictim)
         {
             if (m_spells.mage.pConeofCold && !me->IsMoving() &&
                 CanTryToCastSpell(me, m_spells.mage.pConeofCold))
@@ -2181,8 +2192,7 @@ void PartyBotAI::UpdateInCombatAI_Mage()
             }
         }
 
-        if (m_spells.mage.pBlizzard &&
-           (me->GetEnemyCountInRadiusAround(pVictim, 10.0f) > 2) &&
+        if (m_spells.mage.pBlizzard && (enemyCountAroundVictim > 2) &&
             CanTryToCastSpell(pVictim, m_spells.mage.pBlizzard, true))
         {
             if (DoCastSpell(pVictim, m_spells.mage.pBlizzard) == SPELL_CAST_OK)
