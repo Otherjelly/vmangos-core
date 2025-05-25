@@ -54,71 +54,69 @@ enum CombatBotSpells
     PET_HYENA   = 4127,
 };
 
-void CombatBotBaseAI::AutoAssignRole()
+CombatBotRoles CombatBotBaseAI::GuessRole(Player* pPlayer) const
 {
-    switch (me->GetClass())
+    switch (pPlayer->GetClass())
     {
         case CLASS_WARRIOR:
         {
-            if (me->HasSpell(SPELL_SHIELD_SLAM))
-                m_role = ROLE_TANK;
+            if (pPlayer->HasSpell(SPELL_SHIELD_SLAM))
+                return ROLE_TANK;
             else
-                m_role = ROLE_MELEE_DPS;
-            return;
+                return ROLE_MELEE_DPS;
         }
         case CLASS_ROGUE:
         {
-            m_role = ROLE_MELEE_DPS;
-            return;
+            return ROLE_MELEE_DPS;
         }
         case CLASS_HUNTER:
         case CLASS_MAGE:
         case CLASS_WARLOCK:
         {
-            m_role = ROLE_RANGE_DPS;
-            return;
+            return ROLE_RANGE_DPS;
         }
         case CLASS_PALADIN:
         {
-            if (me->HasSpell(SPELL_HOLY_SHIELD))
-                m_role = ROLE_TANK;
-            else if (me->HasSpell(SPELL_SANCTITY_AURA))
-                m_role = ROLE_MELEE_DPS;
+            if (pPlayer->HasSpell(SPELL_HOLY_SHIELD))
+                return ROLE_TANK;
+            else if (pPlayer->HasSpell(SPELL_SANCTITY_AURA))
+                return ROLE_MELEE_DPS;
             else
-                m_role = ROLE_HEALER;
-            return;
+                return ROLE_HEALER;
         }
         case CLASS_PRIEST:
         {
-            if (me->HasSpell(SPELL_SHADOWFORM))
-                m_role = ROLE_RANGE_DPS;
+            if (pPlayer->HasSpell(SPELL_SHADOWFORM))
+                return ROLE_RANGE_DPS;
             else
-                m_role = ROLE_HEALER;
-            return;
+                return ROLE_HEALER;
         }
         case CLASS_SHAMAN:
         {
-            if (me->HasSpell(SPELL_ELEMENTAL_MASTERY))
-                m_role = ROLE_RANGE_DPS;
-            else if (me->HasSpell(SPELL_STORMSTRIKE))
-                m_role = ROLE_MELEE_DPS;
+            if (pPlayer->HasSpell(SPELL_ELEMENTAL_MASTERY))
+                return ROLE_RANGE_DPS;
+            else if (pPlayer->HasSpell(SPELL_STORMSTRIKE))
+                return ROLE_MELEE_DPS;
             else
-                m_role = ROLE_HEALER;
-            return;
+                return ROLE_HEALER;
         }
         case CLASS_DRUID:
         {
-            if (me->HasSpell(SPELL_MOONKIN_FORM))
-                m_role = ROLE_RANGE_DPS;
-            else if (me->HasSpell(SPELL_LEADER_OF_THE_PACK))
-                m_role = ROLE_MELEE_DPS;
+            if (pPlayer->HasSpell(SPELL_MOONKIN_FORM))
+                return ROLE_RANGE_DPS;
+            else if (pPlayer->HasSpell(SPELL_LEADER_OF_THE_PACK))
+                return ROLE_MELEE_DPS;
             else
-                m_role = ROLE_HEALER;
-            return;
+                return ROLE_HEALER;
         }
     }
 
-    m_role = ROLE_MELEE_DPS;
+    return ROLE_MELEE_DPS;
+}
+
+void CombatBotBaseAI::AutoAssignRole()
+{
+    m_role = GuessRole(me);
 }
 
 void CombatBotBaseAI::ResetSpellData()
@@ -128,6 +126,8 @@ void CombatBotBaseAI::ResetSpellData()
 
     m_resurrectionSpell = nullptr;
     m_spellListDirectHeal.clear();
+    m_spellListDirectHealSlow.clear();
+    m_spellListDirectHealFast.clear();
     m_spellListPeriodicHeal.clear();
     m_spellListTaunt.clear();
 }
@@ -265,91 +265,79 @@ void CombatBotBaseAI::PopulateSpellData()
                 {
                     if (pSpellEntry->SpellName[0].find("Greater") != std::string::npos) // This is greater
                     {
-                        if (m_spells.paladin.pBlessingOfSalvation && m_spells.paladin.pBlessingOfSalvation->SpellName[0].find("Greater") == std::string::npos) // Current is not greater
-                            m_spells.paladin.pBlessingOfSalvation = nullptr;
+                        if (IsHigherRankSpell(m_spells.paladin.pGreaterBlessingOfSalvation))
+                            m_spells.paladin.pGreaterBlessingOfSalvation = pSpellEntry;
                     }
                     else
                     {
-                        if (m_spells.paladin.pBlessingOfSalvation && m_spells.paladin.pBlessingOfSalvation->SpellName[0].find("Greater") != std::string::npos) // Current is greater
-                            break;
+                        if (IsHigherRankSpell(m_spells.paladin.pBlessingOfSalvation))
+                            m_spells.paladin.pBlessingOfSalvation = pSpellEntry;
                     }
-                    if (IsHigherRankSpell(m_spells.paladin.pBlessingOfSalvation))
-                        m_spells.paladin.pBlessingOfSalvation = pSpellEntry;
                 }
                 else if (pSpellEntry->SpellName[0].find("Blessing of Sanctuary") != std::string::npos)
                 {
                     if (pSpellEntry->SpellName[0].find("Greater") != std::string::npos) // This is greater
                     {
-                        if (m_spells.paladin.pBlessingOfSanctuary && m_spells.paladin.pBlessingOfSanctuary->SpellName[0].find("Greater") == std::string::npos) // Current is not greater
-                            m_spells.paladin.pBlessingOfSanctuary = nullptr;
+                        if (IsHigherRankSpell(m_spells.paladin.pGreaterBlessingOfSanctuary))
+                            m_spells.paladin.pGreaterBlessingOfSanctuary = pSpellEntry;
                     }
                     else
                     {
-                        if (m_spells.paladin.pBlessingOfSanctuary && m_spells.paladin.pBlessingOfSanctuary->SpellName[0].find("Greater") != std::string::npos) // Current is greater
-                            break;
+                        if (IsHigherRankSpell(m_spells.paladin.pBlessingOfSanctuary))
+                            m_spells.paladin.pBlessingOfSanctuary = pSpellEntry;
                     }
-                    if (IsHigherRankSpell(m_spells.paladin.pBlessingOfSanctuary))
-                        m_spells.paladin.pBlessingOfSanctuary = pSpellEntry;
                 }
                 else if (pSpellEntry->SpellName[0].find("Blessing of Kings") != std::string::npos)
                 {
                     if (pSpellEntry->SpellName[0].find("Greater") != std::string::npos) // This is greater
                     {
-                        if (m_spells.paladin.pBlessingOfKings && m_spells.paladin.pBlessingOfKings->SpellName[0].find("Greater") == std::string::npos) // Current is not greater
-                            m_spells.paladin.pBlessingOfKings = nullptr;
+                        if (IsHigherRankSpell(m_spells.paladin.pGreaterBlessingOfKings))
+                            m_spells.paladin.pGreaterBlessingOfKings = pSpellEntry;
                     }
                     else
                     {
-                        if (m_spells.paladin.pBlessingOfKings && m_spells.paladin.pBlessingOfKings->SpellName[0].find("Greater") != std::string::npos) // Current is greater
-                            break;
+                        if (IsHigherRankSpell(m_spells.paladin.pBlessingOfKings))
+                            m_spells.paladin.pBlessingOfKings = pSpellEntry;
                     }
-                    if (IsHigherRankSpell(m_spells.paladin.pBlessingOfKings))
-                        m_spells.paladin.pBlessingOfKings = pSpellEntry;
                 }
                 else if (pSpellEntry->SpellName[0].find("Blessing of Wisdom") != std::string::npos)
                 {
                     if (pSpellEntry->SpellName[0].find("Greater") != std::string::npos) // This is greater
                     {
-                        if (m_spells.paladin.pBlessingOfWisdom && m_spells.paladin.pBlessingOfWisdom->SpellName[0].find("Greater") == std::string::npos) // Current is not greater
-                            m_spells.paladin.pBlessingOfWisdom = nullptr;
+                        if (IsHigherRankSpell(m_spells.paladin.pGreaterBlessingOfWisdom))
+                            m_spells.paladin.pGreaterBlessingOfWisdom = pSpellEntry;
                     }
                     else
                     {
-                        if (m_spells.paladin.pBlessingOfWisdom && m_spells.paladin.pBlessingOfWisdom->SpellName[0].find("Greater") != std::string::npos) // Current is greater
-                            break;
+                        if (IsHigherRankSpell(m_spells.paladin.pBlessingOfWisdom))
+                            m_spells.paladin.pBlessingOfWisdom = pSpellEntry;
                     }
-                    if (IsHigherRankSpell(m_spells.paladin.pBlessingOfWisdom))
-                        m_spells.paladin.pBlessingOfWisdom = pSpellEntry;
                 }
                 else if (pSpellEntry->SpellName[0].find("Blessing of Might") != std::string::npos)
                 {
                     if (pSpellEntry->SpellName[0].find("Greater") != std::string::npos) // This is greater
                     {
-                        if (m_spells.paladin.pBlessingOfMight && m_spells.paladin.pBlessingOfMight->SpellName[0].find("Greater") == std::string::npos) // Current is not greater
-                            m_spells.paladin.pBlessingOfMight = nullptr;
+                        if (IsHigherRankSpell(m_spells.paladin.pGreaterBlessingOfMight))
+                            m_spells.paladin.pGreaterBlessingOfMight = pSpellEntry;
                     }
                     else
                     {
-                        if (m_spells.paladin.pBlessingOfMight && m_spells.paladin.pBlessingOfMight->SpellName[0].find("Greater") != std::string::npos) // Current is greater
-                            break;
+                        if (IsHigherRankSpell(m_spells.paladin.pBlessingOfMight))
+                            m_spells.paladin.pBlessingOfMight = pSpellEntry;
                     }
-                    if (IsHigherRankSpell(m_spells.paladin.pBlessingOfMight))
-                        m_spells.paladin.pBlessingOfMight = pSpellEntry;
                 }
                 else if (pSpellEntry->SpellName[0].find("Blessing of Light") != std::string::npos)
                 {
                     if (pSpellEntry->SpellName[0].find("Greater") != std::string::npos) // This is greater
                     {
-                        if (m_spells.paladin.pBlessingOfLight && m_spells.paladin.pBlessingOfLight->SpellName[0].find("Greater") == std::string::npos) // Current is not greater
-                            m_spells.paladin.pBlessingOfLight = nullptr;
+                        if (IsHigherRankSpell(m_spells.paladin.pGreaterBlessingOfLight))
+                            m_spells.paladin.pGreaterBlessingOfLight = pSpellEntry;
                     }
                     else
                     {
-                        if (m_spells.paladin.pBlessingOfLight && m_spells.paladin.pBlessingOfLight->SpellName[0].find("Greater") != std::string::npos) // Current is greater
-                            break;
+                        if (IsHigherRankSpell(m_spells.paladin.pBlessingOfLight))
+                            m_spells.paladin.pBlessingOfLight = pSpellEntry;
                     }
-                    if (IsHigherRankSpell(m_spells.paladin.pBlessingOfLight))
-                        m_spells.paladin.pBlessingOfLight = pSpellEntry;
                 }
                 else if (pSpellEntry->SpellName[0].find("Devotion Aura") != std::string::npos)
                 {
@@ -400,6 +388,11 @@ void CombatBotBaseAI::PopulateSpellData()
                 {
                     if (IsHigherRankSpell(m_spells.paladin.pHammerOfWrath))
                         m_spells.paladin.pHammerOfWrath = pSpellEntry;
+                }
+                else if (pSpellEntry->SpellName[0].find("Purify") != std::string::npos)
+                {
+                    if (IsHigherRankSpell(m_spells.paladin.pPurify))
+                        m_spells.paladin.pPurify = pSpellEntry;
                 }
                 else if (pSpellEntry->SpellName[0].find("Cleanse") != std::string::npos)
                 {
@@ -1090,7 +1083,12 @@ void CombatBotBaseAI::PopulateSpellData()
             }
             case CLASS_WARLOCK:
             {
-                if (pSpellEntry->SpellName[0].find("Demon Armor") != std::string::npos)
+                if (pSpellEntry->SpellName[0].find("Demon Skin") != std::string::npos)
+                {
+                    if (IsHigherRankSpell(m_spells.warlock.pDemonSkin))
+                        m_spells.warlock.pDemonSkin = pSpellEntry;
+                }
+                else if (pSpellEntry->SpellName[0].find("Demon Armor") != std::string::npos)
                 {
                     if (IsHigherRankSpell(m_spells.warlock.pDemonArmor))
                         m_spells.warlock.pDemonArmor = pSpellEntry;
@@ -1160,6 +1158,11 @@ void CombatBotBaseAI::PopulateSpellData()
                     if (IsHigherRankSpell(m_spells.warlock.pDemonicSacrifice))
                         m_spells.warlock.pDemonicSacrifice = pSpellEntry;
                 }
+                else if (pSpellEntry->SpellName[0].find("Drain Soul") != std::string::npos)
+                {
+                    if (IsHigherRankSpell(m_spells.warlock.pDrainSoul))
+                        m_spells.warlock.pDrainSoul = pSpellEntry;
+                }
                 else if (pSpellEntry->SpellName[0].find("Drain Life") != std::string::npos)
                 {
                     if (IsHigherRankSpell(m_spells.warlock.pDrainLife))
@@ -1189,6 +1192,11 @@ void CombatBotBaseAI::PopulateSpellData()
                 {
                     if (IsHigherRankSpell(m_spells.warlock.pHowlofTerror))
                         m_spells.warlock.pHowlofTerror = pSpellEntry;
+                }
+                else if (pSpellEntry->SpellName[0].find("Curse of Weakness") != std::string::npos)
+                {
+                    if (IsHigherRankSpell(m_spells.warlock.pCurseofWeakness))
+                        m_spells.warlock.pCurseofWeakness = pSpellEntry;
                 }
                 else if (pSpellEntry->SpellName[0].find("Curse of Agony") != std::string::npos)
                 {
@@ -1224,6 +1232,16 @@ void CombatBotBaseAI::PopulateSpellData()
                 {
                     if (IsHigherRankSpell(m_spells.warlock.pRitualOfSummoning))
                         m_spells.warlock.pRitualOfSummoning = pSpellEntry;
+                }
+                else if (pSpellEntry->SpellName[0].find("Create Soulstone") != std::string::npos)
+                {
+                    if (IsHigherRankSpell(m_spells.warlock.pCreateSoulstone))
+                        m_spells.warlock.pCreateSoulstone = pSpellEntry;
+                }
+                else if (pSpellEntry->SpellName[0].find("Create Healthstone") != std::string::npos)
+                {
+                    if (IsHigherRankSpell(m_spells.warlock.pCreateHealthstone))
+                        m_spells.warlock.pCreateHealthstone = pSpellEntry;
                 }
                 break;
             }
@@ -1821,7 +1839,16 @@ void CombatBotBaseAI::PopulateSpellData()
             switch (pSpellEntry->Effect[i])
             {
                 case SPELL_EFFECT_HEAL:
-                    m_spellListDirectHeal.insert(pSpellEntry);
+                    if (pSpellEntry->IsAreaOfEffectSpell())
+                        m_spellListGroupHeal.insert(pSpellEntry);
+                    else
+                    {
+                        m_spellListDirectHeal.insert(pSpellEntry);
+                        if (pSpellEntry->GetCastTime(me) <= 1500)
+                            m_spellListDirectHealFast.insert(pSpellEntry);
+                        else
+                            m_spellListDirectHealSlow.insert(pSpellEntry);
+                    }
                     break;
                 case SPELL_EFFECT_ATTACK_ME:
                     m_spellListTaunt.push_back(pSpellEntry);
@@ -2056,6 +2083,163 @@ void CombatBotBaseAI::AddAllSpellReagents()
     }
 }
 
+void CombatBotBaseAI::RecentSpellsUpdate(uint32 diff)
+{
+    for (auto& rs : m_recentSpells)
+    {
+        if (rs.age <= RECENT_SPELLS_THRESHOLD_MS)
+            rs.age += diff;
+    }
+}
+
+bool CombatBotBaseAI::RecentSpellsContains(uint32 targetId, uint32 spellEntryId) const
+{
+    for (auto const& rs : m_recentSpells)
+    {
+        if (rs.spellEntryId == spellEntryId && rs.targetId == targetId && rs.age <= RECENT_SPELLS_THRESHOLD_MS)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void CombatBotBaseAI::RecentSpellsAdd(uint32 targetId, uint32 spellEntryId)
+{
+    uint8 replaceIdx = 0;
+    for (uint8 i = 0; i < RECENT_SPELLS_SIZE; ++i)
+    {
+        if (m_recentSpells[i].age > RECENT_SPELLS_THRESHOLD_MS)
+        {
+            replaceIdx = i;
+            break;
+        }
+        if (m_recentSpells[i].age > m_recentSpells[replaceIdx].age)
+        {
+            replaceIdx = i;
+        }
+    }
+    assert(replaceIdx < RECENT_SPELLS_SIZE);
+
+    m_recentSpells[replaceIdx].spellEntryId = spellEntryId;
+    m_recentSpells[replaceIdx].targetId = targetId;
+    m_recentSpells[replaceIdx].age = 0;
+}
+
+void CombatBotBaseAI::SafeSpotsUpdate()
+{
+    float curX = me->GetPositionX();
+    float curY = me->GetPositionY();
+    float curZ = me->GetPositionZ();
+
+    const uint32_t lastIndex = (m_recentSafeSpotsIndex + RECENT_SAFE_SPOT_SIZE - 1) % RECENT_SAFE_SPOT_SIZE;
+    const RecentSafeSpot& lastSpot = m_recentSafeSpots[lastIndex];
+
+    bool shouldInsert = !lastSpot.valid || (me->GetDistance2d(lastSpot.x, lastSpot.y) >= RECENT_SAFE_SPOT_DISTANCE_STORE);
+
+    if (shouldInsert)
+    {
+        m_recentSafeSpots[m_recentSafeSpotsIndex] = RecentSafeSpot(curX, curY, curZ);
+        m_recentSafeSpotsIndex = (m_recentSafeSpotsIndex + 1) % RECENT_SAFE_SPOT_SIZE;
+    }
+}
+
+bool CombatBotBaseAI::SafeSpotsFind(Unit* pUnit, float distance, float& outX, float& outY, float& outZ)
+{
+    float curX = pUnit->GetPositionX();
+    float curY = pUnit->GetPositionY();
+    return SafeSpotsFind(curX, curY, distance, outX, outY, outZ);
+}
+
+bool CombatBotBaseAI::SafeSpotsFind(float fromX, float fromY, float distance, float& outX, float& outY, float& outZ)
+{
+    uint8 attempts = 0;
+
+    while (attempts < RECENT_SAFE_SPOT_SIZE)
+    {
+        // Check the most recent spot (just before the current index)
+        uint8 index = (m_recentSafeSpotsIndex + RECENT_SAFE_SPOT_SIZE - 1) % RECENT_SAFE_SPOT_SIZE;
+        RecentSafeSpot& spot = m_recentSafeSpots[index];
+        if (!spot.valid)
+            break;
+
+        // Too far?
+        float dx = fromX - spot.x;
+        float dy = fromY - spot.y;
+        float dist = sqrt((dx * dx) + (dy * dy));
+        if (dist > distance * 3)
+            break;
+
+        // Too close?
+        if (dist < distance)
+        {
+            spot.valid = false;
+            m_recentSafeSpotsIndex = index;
+            ++attempts;
+            continue;
+        }
+
+        // Use this spot.  Could be a different reference frame (map) but meh..
+        outX = spot.x;
+        outY = spot.y;
+        outZ = spot.z;
+        return true;
+    }
+
+    return false;
+}
+
+
+
+template <typename Func>
+void CombatBotBaseAI::ForEachCombatBotInGroup(bool mustBeAlive, Func&& func) const
+{
+    Group* pGroup = me->GetGroup();
+    for (GroupReference* itr = pGroup->GetFirstMember(); itr != nullptr; itr = itr->next())
+    {
+        if (Player* pMember = itr->getSource())
+        {
+            if (mustBeAlive && !pMember->IsAlive())
+                continue;
+
+            if (pMember->AI())
+            {
+                if (CombatBotBaseAI* pAI = dynamic_cast<CombatBotBaseAI*>(pMember->AI()))
+                {
+                    if (func(pAI))
+                            return;
+                }
+            }
+        }
+    }
+}
+
+template <typename Func>
+CombatBotBaseAI* CombatBotBaseAI::FindFirstCombatBotInGroupByCondition(bool mustBeAlive, Func&& func) const
+{
+    CombatBotBaseAI* found = nullptr;
+    ForEachCombatBotInGroup(mustBeAlive,
+        [&](CombatBotBaseAI* pAI) -> bool
+        {
+            if (func(pAI))
+            {
+                found = pAI;
+                return true; // stop iteration
+            }
+            return false; // continue
+        });
+    return found;
+}
+
+bool CombatBotBaseAI::RecentSpellExistsForGroup(uint32 targetId, uint32 spellEntryId) const
+{
+    return FindFirstCombatBotInGroupByCondition(true,
+        [&](CombatBotBaseAI* pAI) -> bool
+        {
+            return pAI->RecentSpellsContains(targetId, spellEntryId);
+        }) != nullptr;
+}
+
 bool CombatBotBaseAI::AreOthersOnSameTarget(ObjectGuid guid, bool checkMelee, bool checkSpells) const
 {
     Group* pGroup = me->GetGroup();
@@ -2093,7 +2277,7 @@ bool CombatBotBaseAI::FindAndHealInjuredAlly(float selfHealPercent, float groupH
     return HealInjuredTarget(pTarget);
 }
 
-static float CalculateHealValue(Player const* me, Unit const* pVictim, SpellEntry const* pSpellEntry, bool ignorePeriodic = false)
+float CombatBotBaseAI::CalculateHealValue(Player const* me, Unit const* pVictim, SpellEntry const* pSpellEntry, bool ignorePeriodic) const
 {
     int32 basePoints = 0;
     for (uint32 i = 0; i < MAX_SPELL_EFFECTS; i++)
@@ -2147,23 +2331,23 @@ SpellEntry const* CombatBotBaseAI::SelectMostEfficientHealingSpell(Unit const* p
 
         if (CanTryToCastSpell(pTarget, pSpellEntry))
         {
-            float basePoints = CalculateHealValue(me, pTarget, pSpellEntry);
+            float basePoints = CalculateHealValue(me, pTarget, pSpellEntry, false);
 
             // Healing is sufficient but not too much? - This will find cheapest spell to heal >= 80% of missing health
-            if (basePoints >= (healRequired * 0.8f))
+            if (basePoints >= (healRequired * 0.8f) && (pTarget->GetHealth() + basePoints) < (pTarget->GetMaxHealth() * 1.2f))
             {
                 uint32 cost = Spell::CalculatePowerCost(pSpellEntry, me);
                 if (cost <= 0)
                 {
-                        cost = 1;
+                    cost = 1;
                 }
                 // sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "SelectMostEfficientHealingSpell - %s healing %s considering %s %d missing %d healing %f cost %d", me->GetName(), pTarget->GetName(), pSpellEntry->SpellName[0].c_str(), pSpellEntry->GetRank(), missingHealth, basePoints, cost);
 
                 if (!pHealSpell || (cost < healCost))
                 {
-                        pHealSpell = pSpellEntry;
-                        healCost = cost;
-                        healAmmount = basePoints;
+                    pHealSpell = pSpellEntry;
+                    healCost = cost;
+                    healAmmount = basePoints;
                 }
             }
 
@@ -2209,7 +2393,7 @@ bool CombatBotBaseAI::HealInjuredTarget(Unit* pTarget)
     {
         if (!pTarget->HasAuraType(SPELL_AURA_PERIODIC_HEAL))
         {
-            if (HealInjuredTargetPeriodic(pTarget))
+            if ((me->GetLevel() > 50 || me->GetPowerPercent(POWER_MANA) > 90.0f) && HealInjuredTargetPeriodic(pTarget))
                 return true;
         }
         return false;
@@ -2238,13 +2422,28 @@ bool CombatBotBaseAI::HealInjuredTargetPeriodic(Unit* pTarget)
     return false;
 }
 
-bool CombatBotBaseAI::HealInjuredTargetDirect(Unit* pTarget)
+bool CombatBotBaseAI::HealInjuredTargetDirect(Unit* pTarget, std::set<SpellEntry const*, HealSpellCompare> spells)
 {
-    if (SpellEntry const* pHealSpell = SelectMostEfficientHealingSpell(pTarget, m_spellListDirectHeal))
+    if (SpellEntry const* pHealSpell = SelectMostEfficientHealingSpell(pTarget, spells))
         if (DoCastSpell(pTarget, pHealSpell) == SPELL_CAST_OK)
             return true;
 
     return false;
+}
+
+bool CombatBotBaseAI::HealInjuredTargetDirect(Unit* pTarget)
+{
+    return HealInjuredTargetDirect(pTarget, m_spellListDirectHeal);
+}
+
+bool CombatBotBaseAI::HealInjuredTargetDirectFast(Unit* pTarget)
+{
+    return HealInjuredTargetDirect(pTarget, m_spellListDirectHealFast);
+}
+
+bool CombatBotBaseAI::HealInjuredTargetDirectSlow(Unit* pTarget)
+{
+    return HealInjuredTargetDirect(pTarget, m_spellListDirectHealSlow);
 }
 
 bool CombatBotBaseAI::IsValidHealTarget(Unit const* pTarget, float healthPercent) const
@@ -2348,7 +2547,7 @@ bool CombatBotBaseAI::FindAndPreHealTarget()
                         continue;
 
                     // Avoid all healers picking same target.
-                    if (pTarget && !IsTankClass(pMember->GetClass()) && AreOthersOnSameTarget(pMember->GetObjectGuid(), false, true))
+                    if (!IsTankClass(pMember->GetClass()) && AreOthersOnSameTarget(pMember->GetObjectGuid(), false, true))
                         continue;
 
                     int32 incomingDamage = GetIncomingdamage(pMember);
@@ -2500,7 +2699,23 @@ bool CombatBotBaseAI::IsValidBuffTarget(Unit const* pTarget, SpellEntry const* p
     return true;
 }
 
-Player* CombatBotBaseAI::SelectBuffTarget(SpellEntry const* pSpellEntry) const
+bool CombatBotBaseAI::IsValidSelectBuffTarget(Unit const* pTarget, SpellEntry const* pSpellEntry) const
+{
+    if (pSpellEntry == m_spells.warlock.pUnendingBreath && !pTarget->IsSwimming())
+        return false;
+
+    if (pTarget->IsPlayer() && pTarget->ToPlayer()->IsGameMaster())
+        return false;
+
+    return me->IsValidHelpfulTarget(pTarget) &&
+        IsValidBuffTarget(pTarget, pSpellEntry) &&
+        !RecentSpellExistsForGroup(pTarget->GetGUIDLow(), pSpellEntry->Id) &&
+        !pTarget->HasAuraType(SPELL_AURA_MOD_UNATTACKABLE) &&   // Imp's phase shift
+        me->IsWithinLOSInMap(pTarget) &&
+        me->IsWithinDist(pTarget, 30.0f);
+}
+
+Unit* CombatBotBaseAI::SelectBuffTarget(SpellEntry const* pSpellEntry) const
 {
     Group* pGroup = me->GetGroup();
     if (pGroup)
@@ -2509,12 +2724,14 @@ Player* CombatBotBaseAI::SelectBuffTarget(SpellEntry const* pSpellEntry) const
         {
             if (Player* pMember = itr->getSource())
             {
-                if (me->IsValidHelpfulTarget(pMember) &&
-                   !pMember->IsGameMaster() &&
-                    IsValidBuffTarget(pMember, pSpellEntry) &&
-                    me->IsWithinLOSInMap(pMember) &&
-                    me->IsWithinDist(pMember, 30.0f))
+                if (IsValidSelectBuffTarget(pMember, pSpellEntry))
                     return pMember;
+
+                if (Pet* pPet = pMember->GetPet())
+                {
+                    if (IsValidSelectBuffTarget(pPet, pSpellEntry))
+                        return pPet;
+                }
             }
         }
     }
@@ -2522,7 +2739,7 @@ Player* CombatBotBaseAI::SelectBuffTarget(SpellEntry const* pSpellEntry) const
     return nullptr;
 }
 
-Player* CombatBotBaseAI::SelectDispelTarget(SpellEntry const* pSpellEntry) const
+Unit* CombatBotBaseAI::SelectDispelTarget(SpellEntry const* pSpellEntry) const
 {
     Group* pGroup = me->GetGroup();
     if (pGroup)
@@ -2537,6 +2754,15 @@ Player* CombatBotBaseAI::SelectDispelTarget(SpellEntry const* pSpellEntry) const
                     me->IsWithinLOSInMap(pMember) &&
                     me->IsWithinDist(pMember, 30.0f))
                     return pMember;
+
+                    if (Pet* pPet = pMember->GetPet())
+                    {
+                        if (me->IsValidHelpfulTarget(pPet) &&
+                            IsValidDispelTarget(pPet, pSpellEntry) &&
+                            me->IsWithinLOSInMap(pPet) &&
+                            me->IsWithinDist(pPet, 30.0f))
+                            return pPet;
+                    }
             }
         }
     }
@@ -3149,6 +3375,9 @@ SpellCastResult CombatBotBaseAI::DoCastSpell(Unit* pTarget, SpellEntry const* pS
     if (changeTargetGuid && (result != SPELL_CAST_OK))
         me->SetTargetGuid(previousTarget);
 
+    if (result == SPELL_CAST_OK)
+        RecentSpellsAdd(pTarget->GetGUIDLow(), pSpellEntry->Id);
+
     return result;
 }
 
@@ -3291,8 +3520,59 @@ void ForEachInventoryItem(Player* pPlayer, uint32 entry, Func&& func)
     }
 }
 
+template <typename Func>
+void ForEachInventoryItem(Player* pPlayer, std::set<uint32> const& entries, Func&& func)
+{
+    for (int i = INVENTORY_SLOT_ITEM_START; i < INVENTORY_SLOT_ITEM_END; ++i)
+    {
+        if (Item* pItem = pPlayer->GetItemByPos(INVENTORY_SLOT_BAG_0, i))
+        {
+            if (entries.count(pItem->GetEntry()) && func(pItem))
+                return;
+        }
+    }
+
+    for (int i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; ++i)
+    {
+        if (Bag* pBag = static_cast<Bag*>(pPlayer->GetItemByPos(INVENTORY_SLOT_BAG_0, i)))
+        {
+            for (uint32 j = 0; j < pBag->GetBagSize(); ++j)
+            {
+                if (Item* pItem = pBag->GetItemByPos(j))
+                {
+                    if (entries.count(pItem->GetEntry()) && func(pItem))
+                        return;
+                }
+            }
+        }
+    }
+}
+
+static const std::set<uint32> HEALTH_STONE_ENTRIES = {
+    5512, 19004, 19005, // Minor Healthstone
+    5511, 19006, 19007, // Lesser Healthstone
+    5509, 19008, 19009, // Healthstone
+    5510, 19010, 19011, // Greater Healthstone
+    9421, 19012, 19013 // Major Healthstone
+};
+
+Item* CombatBotBaseAI::GetHealthStone()
+{
+    Item* result = nullptr;
+    ForEachInventoryItem(me, HEALTH_STONE_ENTRIES,
+        [&result](Item* pItem)
+        {
+            result = pItem;
+            return true; // stop at first match
+        });
+    return result;
+}
+
+
+
 uint32 CombatBotBaseAI::CountInventoryItem(uint32 entry)
 {
+    // TODO: Player::HasItemCount
     uint32 count = 0;
     ForEachInventoryItem(me, entry, [&count](Item* pItem)
     {
@@ -3304,6 +3584,8 @@ uint32 CombatBotBaseAI::CountInventoryItem(uint32 entry)
 
 uint32 CombatBotBaseAI::CountInventoryItem(SpellEntry const* spellEntry)
 {
+    // SPELL_EFFECT_CREATE_ITEM -> EffectItemType
+    // SPELL_EFFECT_SCRIPT_EFFECT -> Hardcoded? Try looking in Spell.CheckItems()
     // TODO: Hard-code map of known spell->item for speed, e.g. conjure water spell->item
     if (spellEntry->EffectItemType[0])
         return CountInventoryItem(spellEntry->EffectItemType[0]);  
@@ -3351,7 +3633,31 @@ bool CombatBotBaseAI::CanTryToCastItemUseSpell(Item* pItem)
     return true;
 }
 
-void CombatBotBaseAI::UseConsumable(Item* pItem)
+bool CombatBotBaseAI::CanTryToCastItemUseSpell(Item* pItem, Unit* pTarget)
+{
+    ItemPrototype const* proto = pItem->GetProto();
+    for (const auto& spellData : proto->Spells)
+    {
+        // no spell
+        if (!spellData.SpellId)
+            continue;
+
+        // wrong triggering type
+        if (spellData.SpellTrigger != ITEM_SPELLTRIGGER_ON_USE)
+            continue;
+
+        SpellEntry const* spellEntry = sSpellMgr.GetSpellEntry(spellData.SpellId);
+
+        if (!me->IsSpellReady(*spellEntry, proto))
+            return false;
+
+        if (!CanTryToCastSpell(pTarget, spellEntry))
+            return false;
+    }
+    return true;
+}
+
+void CombatBotBaseAI::UseConsumable(Item* pItem, Unit* pTarget)
 {
     if (pItem)
     {
@@ -3362,7 +3668,7 @@ void CombatBotBaseAI::UseConsumable(Item* pItem)
         }
 
         SpellCastTargets targets;
-        targets.setUnitTarget(me);
+        targets.setUnitTarget(pTarget);
         me->CastItemUseSpell(pItem, targets);
     }
 }

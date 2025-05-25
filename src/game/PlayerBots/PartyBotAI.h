@@ -50,7 +50,23 @@ public:
     void CloneFromPlayer(Player const* pPlayer);
     void AddToPlayerGroup();
 
-    bool ExistsByRole(CombatBotRoles role, bool mustBeAlive) const;
+    CombatBotRoles GetRoleByMember(Player* pMember) const;
+    CombatBotRoles PartyBotAI::GetRoleByPet(Player* pMember, Pet* pPet) const;
+    template <typename Func>
+    void ForEachPlayerInGroup(bool mustBeAlive, Func&& func) const;
+    template <typename Func>
+    Player* FindFirstPlayerInGroupByCondition(bool mustBeAlive, Func&& func) const;
+    template <typename Func>
+    std::set<Player*> FindAllPlayersInGroupByCondition(bool mustBeAlive, Func&& func) const;
+    std::set<Player*> FindAllPlayersInGroup(bool mustBeAlive) const;
+    std::set<Player*> FindAllPlayersInGroupByRole(CombatBotRoles role, bool mustBeAlive) const;
+    std::set<Player*> FindAllPlayersInGroupByClass(Classes unitClass, bool mustBeAlive) const;
+    Player* FindFirstPlayerInGroupByRole(CombatBotRoles role, bool mustBeAlive) const;
+    Player* FindFirstPlayerInGroupByClass(Classes unitClass, bool mustBeAlive) const;
+    bool ExistsAsPlayerInGroupByRole(CombatBotRoles role, bool mustBeAlive) const;
+    bool ExistsAsTankInGroupForThreatCheck() const;
+    bool ExistsAsHealerInGroupForOffHealCheck() const;
+
     bool CheckThreatOK(Unit const* pTarget, SpellEntry const* pSpellEntry = nullptr) const;
     bool CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry, bool ignoreAppliesAuraCheck = false, bool checkAuraCaster = false, bool ignoreStacks = false) const final;
     Player* GetPartyLeader() const;
@@ -58,9 +74,10 @@ public:
     Unit* SelectAttackTarget(Player* pLeader) const;
     Unit* SelectPartyAttackTarget() const;
     Unit* SelectDispelAttackerTarget(SpellEntry const* pSpellEntry) const;
-    Unit* SelectPartyDefendTarget() const;
+    Unit* SelectPartyDefendTarget(Unit* pSelectingFor) const;
     Player* SelectResurrectionTarget() const;
     Player* SelectShieldTarget() const;
+    Unit* SelectBuffTargetByRole(SpellEntry const* pSpellEntry, CombatBotRoles role) const;
     Unit* GetMarkedTarget(RaidTargetIcon mark) const;
     bool CanUseCrowdControl(SpellEntry const* pSpellEntry, Unit* pTarget) const;
     bool CrowdControledMarkedTargetsExistNear(Unit const* pTarget, float radius = 15.0f) const;
@@ -68,6 +85,7 @@ public:
     bool ShouldAutoRevive() const;
     bool IsValidDistancingTarget(Unit* pTarget, Unit* pEnemy);
     Unit* GetDistancingTarget(Unit* pEnemy);
+    bool RunAwayFromTarget(Unit* pEnemy, float distance);
     bool RunAwayFromTarget(Unit* pEnemy);
     void MoveChase(Unit* target, float dist = 0.0f, float angle = 0.0f);
     void MovePointNear(float x, float y, float z, Unit* pVictim = nullptr);
@@ -97,6 +115,7 @@ public:
     void UpdateOutOfCombatAI_Rogue() final;
     void UpdateInCombatAI_Druid() final;
     void UpdateOutOfCombatAI_Druid() final;
+    void UpdateInCombatPetAI();
 
     std::vector<RaidTargetIcon> m_marksToCC;
     std::vector<RaidTargetIcon> m_marksToFocus;

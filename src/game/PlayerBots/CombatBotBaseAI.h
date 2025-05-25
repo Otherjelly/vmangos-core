@@ -87,6 +87,7 @@ public:
     void SendAreaTriggerPacket(uint32 areaTriggerId);
     void ActivateNearbyAreaTrigger();
 
+    CombatBotRoles GuessRole(Player* pPlayer) const;
     void AutoAssignRole();
     void PopulateSpellData();
     void ResetSpellData();
@@ -98,21 +99,39 @@ public:
     void EquipRandomGearInEmptySlots();
     void AutoEquipGear(uint32 option);
     void LearnRandomTalents();
-    
+
+    template <typename Func>
+    void ForEachCombatBotInGroup(bool mustBeAlive, Func&& func) const;
+    template <typename Func>
+    CombatBotBaseAI* FindFirstCombatBotInGroupByCondition(bool mustBeAlive, Func&& func) const;
+    bool RecentSpellExistsForGroup(uint32 targetId, uint32 spellEntryId) const;
+
+    void RecentSpellsUpdate(uint32 diff);
+    bool RecentSpellsContains(uint32 targetId, uint32 spellEntryId) const;
+    void RecentSpellsAdd(uint32 targetId, uint32 spellEntryId);
+    void SafeSpotsUpdate();
+    bool SafeSpotsFind(Unit* pUnit, float distance, float& outX, float& outY, float& outZ);
+    bool SafeSpotsFind(float fromX, float fromY, float distance, float& outX, float& outY, float& outZ);
+
     uint8 GetAttackersInRangeCount(float range) const;
     Unit* SelectAttackerDifferentFrom(Unit const* pExcept) const;
     Unit* SelectHealTarget(float selfHealPercent = 100.0f, float groupHealPercent = 100.0f) const;
     Unit* SelectPeriodicHealTarget(float selfHealPercent = 100.0f, float groupHealPercent = 100.0f) const;
-    Player* SelectBuffTarget(SpellEntry const* pSpellEntry) const;
-    Player* SelectDispelTarget(SpellEntry const* pSpellEntry) const;
+    Unit* SelectBuffTarget(SpellEntry const* pSpellEntry) const;
+    Unit* SelectDispelTarget(SpellEntry const* pSpellEntry) const;
     bool IsValidBuffTarget(Unit const* pTarget, SpellEntry const* pSpellEntry) const;
+    bool IsValidSelectBuffTarget(Unit const* pTarget, SpellEntry const* pSpellEntry) const;
     bool IsValidHealTarget(Unit const* pTarget, float healthPercent = 100.0f) const;
     bool IsValidHostileTarget(Unit const* pTarget) const;
     bool IsValidDispelTarget(Unit const* pTarget, SpellEntry const* pSpellEntry) const;
     bool FindAndPreHealTarget();
     bool FindAndHealInjuredAlly(float selfHealPercent = 100.0f, float groupHealPercent = 100.0f);
+    float CalculateHealValue(Player const* me, Unit const* pVictim, SpellEntry const* pSpellEntry, bool ignorePeriodic = false) const;
     bool HealInjuredTarget(Unit* pTarget);
+    bool HealInjuredTargetDirect(Unit* pTarget, std::set<SpellEntry const*, HealSpellCompare> spells);
     bool HealInjuredTargetDirect(Unit* pTarget);
+    bool HealInjuredTargetDirectFast(Unit* pTarget);
+    bool HealInjuredTargetDirectSlow(Unit* pTarget);
     bool HealInjuredTargetPeriodic(Unit* pTarget);
     template <class T>
     SpellEntry const* SelectMostEfficientHealingSpell(Unit const* pTarget, std::set<SpellEntry const*, T>& spellList) const;
@@ -130,12 +149,14 @@ public:
     void EquipOrUseNewItem();
     void AddItemToInventory(uint32 itemId, uint32 count = 1);
     void AddHunterAmmo();
+    Item* GetHealthStone();
     uint32 CountInventoryItem(uint32 entry);
     uint32 CountInventoryItem(SpellEntry const* spellEntry);
     Item* GetInventoryItem(uint32 entry);
     Item* GetInventoryItem(SpellEntry const* spellEntry);
     bool CanTryToCastItemUseSpell(Item* pItem);
-    void UseConsumable(Item* pItem);
+    bool CanTryToCastItemUseSpell(Item* pItem, Unit* pTarget);
+    void UseConsumable(Item* pItem, Unit* pTarget);
     uint8 GetHighestHonorRankFromEquippedItems() const;
     void UpdateVisualHonorRankBasedOnItems();
 
@@ -288,11 +309,14 @@ public:
     std::vector<SpellEntry const*> m_spellListTaunt;    // Full & temporary
     std::set<SpellEntry const*, HealAuraCompare> m_spellListPeriodicHeal;
     std::set<SpellEntry const*, HealSpellCompare> m_spellListDirectHeal;
+    std::set<SpellEntry const*, HealSpellCompare> m_spellListDirectHealFast;
+    std::set<SpellEntry const*, HealSpellCompare> m_spellListDirectHealSlow;
+    std::set<SpellEntry const*, HealSpellCompare> m_spellListGroupHeal;
     union
     {
         struct
         {
-            SpellEntry const* spells[45];
+            SpellEntry const* spells[50];
         } raw;
         struct
         {
@@ -310,6 +334,7 @@ public:
             SpellEntry const* pExorcism;
             SpellEntry const* pConsecration;
             SpellEntry const* pHammerOfWrath;
+            SpellEntry const* pPurify;
             SpellEntry const* pCleanse;
             SpellEntry const* pDivineShield;
             SpellEntry const* pLayOnHands;
@@ -332,6 +357,12 @@ public:
             SpellEntry const* pBlessingOfKings;
             SpellEntry const* pBlessingOfSanctuary;
             SpellEntry const* pBlessingOfSalvation;
+            SpellEntry const* pGreaterBlessingOfLight;
+            SpellEntry const* pGreaterBlessingOfMight;
+            SpellEntry const* pGreaterBlessingOfWisdom;
+            SpellEntry const* pGreaterBlessingOfKings;
+            SpellEntry const* pGreaterBlessingOfSanctuary;
+            SpellEntry const* pGreaterBlessingOfSalvation;
             // Paladin Auras
             SpellEntry const* pDevotionAura;
             SpellEntry const* pConcentrationAura;
@@ -460,6 +491,7 @@ public:
         } priest;
         struct
         {
+            SpellEntry const* pDemonSkin;
             SpellEntry const* pDemonArmor;
             SpellEntry const* pDeathCoil;
             SpellEntry const* pUnendingBreath;
@@ -474,12 +506,14 @@ public:
             SpellEntry const* pImmolate;
             SpellEntry const* pRainOfFire;
             SpellEntry const* pDemonicSacrifice;
+            SpellEntry const* pDrainSoul;
             SpellEntry const* pDrainLife;
             SpellEntry const* pSiphonLife;
             SpellEntry const* pDrainMana;
             SpellEntry const* pBanish;
             SpellEntry const* pFear;
             SpellEntry const* pHowlofTerror;
+            SpellEntry const* pCurseofWeakness;
             SpellEntry const* pCurseofAgony;
             SpellEntry const* pCurseofDoom;
             SpellEntry const* pCurseoftheElements;
@@ -489,6 +523,8 @@ public:
             SpellEntry const* pCurseofExhaustion;
             SpellEntry const* pLifeTap;
             SpellEntry const* pRitualOfSummoning;
+            SpellEntry const* pCreateSoulstone;
+            SpellEntry const* pCreateHealthstone;
         } warlock;
         struct
         {
@@ -625,6 +661,30 @@ public:
     bool m_receivedBgInvite = false;
     uint8 m_visualHonorRank = 0;
     CombatBotRoles m_role = ROLE_INVALID;
+
+    struct RecentSpell
+    {
+        uint32 spellEntryId; // pSpellEntry->Id
+        uint32 targetId; // pTarget->GetGUIDLow()
+        uint32 age;
+        RecentSpell() = default;
+        RecentSpell(uint32 s, uint32 t) : spellEntryId(s), targetId(t), age(0) {}
+    };
+    static constexpr uint8 RECENT_SPELLS_SIZE = 3;
+    static constexpr uint32 RECENT_SPELLS_THRESHOLD_MS = 2000; // 2 seconds
+    std::array<RecentSpell, RECENT_SPELLS_SIZE> m_recentSpells; // TODO: Generic circular buffer
+
+    struct RecentSafeSpot
+    {
+        bool valid;
+        float x, y, z;
+        RecentSafeSpot() : valid(false), x(0.0f), y(0.0f), z(0.0f) {}
+        RecentSafeSpot(float x, float y, float z) : valid(true), x(x), y(y), z(z) {}
+    };
+    static constexpr uint8 RECENT_SAFE_SPOT_SIZE = 30;
+    static constexpr float RECENT_SAFE_SPOT_DISTANCE_STORE = 2.0f;
+    std::array<RecentSafeSpot, RECENT_SAFE_SPOT_SIZE> m_recentSafeSpots; // TODO: Generic circular buffer
+    uint8 m_recentSafeSpotsIndex = 0;
 };
 
 #endif
