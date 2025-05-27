@@ -177,10 +177,12 @@ bool PartyBotAI::RunAwayFromTarget(Unit* pEnemy, float distance)
     if (m_stay)
         return false;
 
+    float ox, oy, oz;
+    pEnemy->GetLosCheckPosition(ox, oy, oz);
     float x, y, z;
     if (SafeSpotsFind(pEnemy, distance, x, y, z))
     {
-        if (pEnemy->IsWithinLOS(x, y, z, true, me->GetCollisionHeight()))
+        if (me->IsWithinLOSAtPosition(x, y, z, ox, oy, oz, true, 0.0f)) // me->GetCollisionHeight()))
         {
             MovePointNear(x, y, z, pEnemy);
             return true;
@@ -320,6 +322,19 @@ bool PartyBotAI::ShouldAutoRevive() const
     return alivePlayerNearby;
 }
 
+bool PartyBotAI::IsTargetDeathWithinSeconds(Unit* pTarget, float seconds) const
+{
+    // 30 ~ Lvl * 0.7 * 1.6
+    uint32 memberCount = pTarget->GetAttackers().size();
+    float effectiveMemberCount = memberCount * 0.7f;  // 5 members ~ 3 full dps, 1 half dps, 1 no dps = 3.5/5.0 = 0.7
+    float memberDps = me->GetLevel() * 1.6f;
+    float groupDps = memberDps * effectiveMemberCount;
+    uint32 totalDamage = static_cast<uint32>(groupDps * seconds);
+    uint32 targetHealth = pTarget->GetHealth();
+
+    return targetHealth < totalDamage;
+}
+
 CombatBotRoles PartyBotAI::GetRoleByMember(Player* pMember) const
 {
     if (pMember->AI())
@@ -336,6 +351,8 @@ CombatBotRoles PartyBotAI::GetRoleByPet(Player* pMember, Pet* pPet) const
 {
     if (pMember->GetClass() == CLASS_HUNTER)
         return ROLE_TANK;
+    if (pMember->GetClass() == CLASS_WARLOCK)
+        return ROLE_RANGE_DPS;
 
     // TODO: Allow roles to be assigned to pets, and better defaults (e.g. imp is ranged)
     return ROLE_MELEE_DPS;
@@ -489,6 +506,8 @@ bool PartyBotAI::CheckThreatOK(Unit const* pTarget, SpellEntry const* pSpellEntr
     if (pTarget == me || pTarget->IsPlayer() || IsInDuel() || !pTarget->CanHaveThreatList() || pTarget->IsFriendlyTo(me))
         return true;
 
+    if (pTarget->GetHealth() < me->GetMaxHealth() / 2)
+        return true;
     if (pSpellEntry)
     {
         if (pSpellEntry->IsPositiveSpell() || pSpellEntry->IsCCSpell() || pSpellEntry->IsAreaOfEffectSpell())
@@ -1342,7 +1361,7 @@ void PartyBotAI::UpdateAI(uint32 const diff)
             me->RemoveSpellsCausingAura(SPELL_AURA_MOUNTED);
     }
 
-    if (!me->IsMoving())
+    if (!me->IsMoving() || me->GetMotionMaster()->GetCurrentMovementGeneratorType() == IDLE_MOTION_TYPE)
     {
         if (!pVictim)
         {
@@ -1363,7 +1382,7 @@ void PartyBotAI::UpdateAI(uint32 const diff)
                 case IDLE_MOTION_TYPE:
                 case FOLLOW_MOTION_TYPE:
                     {
-                        bool chase = GetRole() == ROLE_MELEE_DPS || GetRole() == ROLE_TANK || me->GetMotionMaster()->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE;
+                        bool chase = GetRole() == ROLE_MELEE_DPS || GetRole() == ROLE_TANK || me->GetMotionMaster()->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE || !me->IsWithinLOSInMap(pVictim);
                         if ((GetRole() == ROLE_MELEE_DPS || GetRole() == ROLE_TANK) && me->CanReachWithMeleeAutoAttack(pVictim))
                             chase = false;
                         if (chase)
@@ -1375,13 +1394,10 @@ void PartyBotAI::UpdateAI(uint32 const diff)
                 default:
                     if (!me->IsWithinLOSInMap(pVictim))
                     {
-                        if (!me->IsMoving())
-                        {
-                            if (me->GetMotionMaster()->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE)
-                                me->SetCasterChaseDistance(0.0f);
-                            else
-                                MoveChase(pVictim);
-                        }
+                        if (me->GetMotionMaster()->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE)
+                            me->SetCasterChaseDistance(3.0f * me->GetDistance2d(pVictim) / 4.0f);
+                        else
+                            MoveChase(pVictim);
                     }
                     break;
             }
@@ -2053,14 +2069,10 @@ void PartyBotAI::UpdateOutOfCombatAI_Hunter()
 
     if (Unit* pVictim = me->GetVictim())
     {
-        uint32 memberCount = me->GetGroup()->GetMembersCount();
-        if (pVictim->GetHealth() > me->GetMaxHealth() * std::min(static_cast<uint32>(4), (memberCount + 2) / 3))
+        if (m_spells.hunter.pHuntersMark && !IsTargetDeathWithinSeconds(pVictim, 10.0f) && CanTryToCastSpell(pVictim, m_spells.hunter.pHuntersMark))
         {
-            if (m_spells.hunter.pHuntersMark && CanTryToCastSpell(pVictim, m_spells.hunter.pHuntersMark))
-            {
-                if (DoCastSpell(pVictim, m_spells.hunter.pHuntersMark) == SPELL_CAST_OK)
-                    return;
-            }
+            if (DoCastSpell(pVictim, m_spells.hunter.pHuntersMark) == SPELL_CAST_OK)
+                return;
         }
 
         if (Pet* pPet = me->GetPet())
@@ -2113,6 +2125,12 @@ void PartyBotAI::UpdateInCombatAI_Hunter()
             MoveChase(pVictim, 25.0f);
         }
 
+        if (m_spells.hunter.pHuntersMark && !IsTargetDeathWithinSeconds(pVictim, 10.0f) && CanTryToCastSpell(pVictim, m_spells.hunter.pHuntersMark))
+        {
+            if (DoCastSpell(pVictim, m_spells.hunter.pHuntersMark) == SPELL_CAST_OK)
+                return;
+        }
+
         if (m_spells.hunter.pVolley &&
            (me->GetEnemyCountInRadiusAround(pVictim, 10.0f) > 2) &&
             CanTryToCastSpell(pVictim, m_spells.hunter.pVolley))
@@ -2159,14 +2177,10 @@ void PartyBotAI::UpdateInCombatAI_Hunter()
                 return;
         }
 
-        uint32 memberCount = me->GetGroup()->GetMembersCount();
-        if (pVictim->GetHealth() > me->GetMaxHealth() * std::min(static_cast<uint32>(4), (memberCount + 2) / 3))
+        if (m_spells.hunter.pSerpentSting && !IsTargetDeathWithinSeconds(pVictim, 10.0f) && CanTryToCastSpell(pVictim, m_spells.hunter.pSerpentSting, false, true))
         {
-            if (m_spells.hunter.pSerpentSting && CanTryToCastSpell(pVictim, m_spells.hunter.pSerpentSting, false, true))
-            {
-                if (DoCastSpell(pVictim, m_spells.hunter.pSerpentSting) == SPELL_CAST_OK)
-                    return;
-            }
+            if (DoCastSpell(pVictim, m_spells.hunter.pSerpentSting) == SPELL_CAST_OK)
+                return;
         }
 
         if (m_spells.hunter.pMultiShot &&
@@ -2986,15 +3000,11 @@ void PartyBotAI::UpdateInCombatAI_Priest()
                 return;
         }
 
-        uint32 memberCount = me->GetGroup()->GetMembersCount();
-        if (pVictim->GetHealth() > me->GetMaxHealth() * std::min(static_cast<uint32>(4), (memberCount + 2) / 3))
+        if (m_spells.priest.pShadowWordPain && !IsTargetDeathWithinSeconds(pVictim, 10.0f) &&
+            CanTryToCastSpell(pVictim, m_spells.priest.pShadowWordPain))
         {
-            if (m_spells.priest.pShadowWordPain &&
-                CanTryToCastSpell(pVictim, m_spells.priest.pShadowWordPain))
-            {
-                if (DoCastSpell(pVictim, m_spells.priest.pShadowWordPain) == SPELL_CAST_OK)
-                    return;
-            }
+            if (DoCastSpell(pVictim, m_spells.priest.pShadowWordPain) == SPELL_CAST_OK)
+                return;
         }
 
         if (m_spells.priest.pDevouringPlague &&
@@ -3020,13 +3030,10 @@ void PartyBotAI::UpdateInCombatAI_Priest()
                 return;
         }
 
-        if (pVictim->GetHealth() > (me->GetMaxHealth() * std::min(static_cast<uint32>(4), (memberCount + 2) / 3)) / 4)
+        if (m_spells.priest.pMindFlay && !IsTargetDeathWithinSeconds(pVictim, 3.0f) && (!GetAttackersInRangeCount(10.0f) || me->HasAuraType(SPELL_AURA_SCHOOL_ABSORB)) && CanTryToCastSpell(pVictim, m_spells.priest.pMindFlay))
         {
-            if (m_spells.priest.pMindFlay && (!GetAttackersInRangeCount(10.0f) || me->HasAuraType(SPELL_AURA_SCHOOL_ABSORB)) && CanTryToCastSpell(pVictim, m_spells.priest.pMindFlay))
-            {
-                if (DoCastSpell(pVictim, m_spells.priest.pMindFlay) == SPELL_CAST_OK)
-                    return;
-            }
+            if (DoCastSpell(pVictim, m_spells.priest.pMindFlay) == SPELL_CAST_OK)
+                return;
         }
 
         if (me->GetMotionMaster()->GetCurrentMovementGeneratorType() == IDLE_MOTION_TYPE
@@ -3244,8 +3251,7 @@ void PartyBotAI::UpdateInCombatAI_Warlock()
                 return;
         }
 
-        uint32 memberCount = me->GetGroup()->GetMembersCount();
-        if ((pVictim->GetHealth() < (me->GetMaxHealth() * std::min(static_cast<uint32>(4), (memberCount + 2) / 3)) / 3))
+        if (IsTargetDeathWithinSeconds(pVictim, 3.0f))
         {
             uint32 soulShads = CountInventoryItem(6265);
             if (m_spells.warlock.pShadowburn && soulShads >= 4 && CanTryToCastSpell(pVictim, m_spells.warlock.pShadowburn))
@@ -3302,19 +3308,12 @@ void PartyBotAI::UpdateInCombatAI_Warlock()
             }
         }
 
-        if (pVictim->GetHealth() > me->GetMaxHealth() * std::min(static_cast<uint32>(4), (memberCount + 2) / 3))
+        if (!IsTargetDeathWithinSeconds(pVictim, 15.0f))
         {
             if (m_spells.warlock.pImmolate &&
                 CanTryToCastSpell(pVictim, m_spells.warlock.pImmolate, false, true))
             {
                 if (DoCastSpell(pVictim, m_spells.warlock.pImmolate) == SPELL_CAST_OK)
-                    return;
-            }
-
-            if (m_spells.warlock.pConflagrate &&
-                CanTryToCastSpell(pVictim, m_spells.warlock.pConflagrate))
-            {
-                if (DoCastSpell(pVictim, m_spells.warlock.pConflagrate) == SPELL_CAST_OK)
                     return;
             }
 
@@ -3324,6 +3323,12 @@ void PartyBotAI::UpdateInCombatAI_Warlock()
                 if (DoCastSpell(pVictim, m_spells.warlock.pCorruption) == SPELL_CAST_OK)
                     return;
             }
+        }
+
+        if (m_spells.warlock.pConflagrate && CanTryToCastSpell(pVictim, m_spells.warlock.pConflagrate))
+        {
+            if (DoCastSpell(pVictim, m_spells.warlock.pConflagrate) == SPELL_CAST_OK)
+                return;
         }
 
         if (m_spells.warlock.pSiphonLife &&
@@ -3360,7 +3365,7 @@ void PartyBotAI::UpdateInCombatAI_Warlock()
         }
 
         // TODO: Prioritise given group composition
-        if (pVictim->GetHealth() > me->GetMaxHealth() * std::min(static_cast<uint32>(4), (memberCount + 2) / 3))
+        if (!IsTargetDeathWithinSeconds(pVictim, 15.0f))
         {
             bool hasMyCurse = false;
             if (m_spells.warlock.pCurseoftheElements && pVictim->GetLevel() >= me->GetLevel())
@@ -3391,7 +3396,7 @@ void PartyBotAI::UpdateInCombatAI_Warlock()
                 }
             }
 
-            if (!hasMyCurse && m_spells.warlock.pCurseofTongues && pVictim->GetLevel() >= me->GetLevel())
+            if (!hasMyCurse && m_spells.warlock.pCurseofTongues && pVictim->GetLevel() >= me->GetLevel() && pVictim->GetPowerType() == POWER_MANA)
             {
                 if (pVictim->GetSpellAuraHolder(m_spells.warlock.pCurseofTongues->Id, me->GetGUIDLow()))
                     hasMyCurse = true;

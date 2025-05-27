@@ -2748,7 +2748,7 @@ Unit* CombatBotBaseAI::SelectDispelTarget(SpellEntry const* pSpellEntry) const
         {
             if (Player* pMember = itr->getSource())
             {
-                if (me->IsValidHelpfulTarget(pMember) &&
+                if ((me->IsValidHelpfulTarget(pMember) || pMember->IsCharmed()) &&
                    !pMember->IsGameMaster() &&
                     IsValidDispelTarget(pMember, pSpellEntry) &&
                     me->IsWithinLOSInMap(pMember) &&
