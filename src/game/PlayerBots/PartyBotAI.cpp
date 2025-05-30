@@ -977,6 +977,41 @@ Unit* PartyBotAI::SelectBuffTargetByRole(SpellEntry const* pSpellEntry, CombatBo
     return nullptr;
 }
 
+void PartyBotAI::EvaluateRebuffTarget(SpellEntry const* pSpellEntry, RebuffCandidate& bestCandidate, bool asCaster, Unit* pTarget)
+{
+    if (me->GetPowerPercent(POWER_MANA) == 100.0f)
+    {
+        if (!pTarget)
+            pTarget = SelectRebuffTarget(pSpellEntry);
+
+        if (pTarget)
+        {
+            SpellAuraHolder* auraHolder;
+            if (asCaster)
+                auraHolder = pTarget->GetSpellAuraHolder(pSpellEntry->Id, me->GetObjectGuid());
+            else
+                auraHolder = pTarget->GetSpellAuraHolder(pSpellEntry->Id);
+
+            if (auraHolder)
+            {
+                int32 duration = auraHolder->GetAuraDuration();
+                if (bestCandidate.target == nullptr || duration < bestCandidate.auraDuration)
+                    bestCandidate = {pTarget, pSpellEntry, duration};
+        }
+    }
+}
+
+void PartyBotAI::EvaluateRebuffTargetForAuraHolder(SpellEntry const* pSpellEntry, RebuffCandidate& bestCandidate, SpellAuraHolder* auraHolder)
+{
+    if (me->GetPowerPercent(POWER_MANA) == 100.0f)
+    {
+        Unit* pTarget = auraHolder->GetTarget();
+        int32 duration = auraHolder->GetAuraDuration();
+        if (bestCandidate.target == nullptr || duration < bestCandidate.auraDuration)
+            bestCandidate = {pTarget, pSpellEntry, duration};
+    }
+}
+
 bool PartyBotAI::CrowdControlMarkedTargets()
 {
     SpellEntry const* pSpellEntry = GetCrowdControlSpell();
@@ -1536,6 +1571,8 @@ void PartyBotAI::UpdateInCombatAI()
 
 void PartyBotAI::UpdateOutOfCombatAI_Paladin()
 {
+    RebuffCandidate bestCandidate;
+
     if (m_spells.paladin.pCleanse)
     {
         if (Unit* pFriend = SelectDispelTarget(m_spells.paladin.pCleanse))
@@ -1620,8 +1657,11 @@ void PartyBotAI::UpdateOutOfCombatAI_Paladin()
             if (!spell)
                 continue;
 
-            if (pMember->GetSpellAuraHolder(spell->Id, me->GetGUIDLow()))
+            if (SpellAuraHolder * auraHolder = pMember->GetSpellAuraHolder(spell->Id, me->GetGUIDLow()))
+            {
+                EvaluateRebuffTargetForAuraHolder(spell, bestCandidate, auraHolder);
                 break; // already blessed by me
+            }
 
             if (IsValidSelectBuffTarget(pMember, spell) &&
                 CanTryToCastSpell(pMember, spell) &&
@@ -1646,8 +1686,11 @@ void PartyBotAI::UpdateOutOfCombatAI_Paladin()
                 if (!spell)
                     continue;
 
-                if (pPet->GetSpellAuraHolder(spell->Id, me->GetGUIDLow()))
+                if (SpellAuraHolder* auraHolder = pPet->GetSpellAuraHolder(spell->Id, me->GetGUIDLow()))
+                {
+                    EvaluateRebuffTargetForAuraHolder(spell, bestCandidate, auraHolder);
                     break; // already blessed by me
+                }
 
                 if (IsValidSelectBuffTarget(pPet, spell) && CanTryToCastSpell(pPet, spell) && DoCastSpell(pPet, spell) == SPELL_CAST_OK)
                 {
@@ -1656,6 +1699,16 @@ void PartyBotAI::UpdateOutOfCombatAI_Paladin()
                     return;
                 }
             }  
+        }
+    }
+
+    if (bestCandidate.target && bestCandidate.spell)
+    {
+        if (DoCastSpell(bestCandidate.target, bestCandidate.spell) == SPELL_CAST_OK)
+        {
+            m_isBuffing = true;
+            me->ClearTarget();
+            return;
         }
     }
 
@@ -2259,6 +2312,10 @@ void PartyBotAI::UpdateInCombatAI_Hunter()
             }
         }
 
+        // Don't both getting distance if they're about to die, unless there's more of em
+        if (GetRole() != ROLE_MELEE_DPS && pVictim->CanReachWithMeleeAutoAttack(me) && IsTargetDeathWithinSeconds(pVictim, 3.0f) && me->GetEnemyCountInRadiusAround(me, 8.0f) < 2)
+            return;
+
         if (!me->HasUnitState(UNIT_STATE_ROOT) &&
             (me->GetCombatDistance(pVictim) < 8.0f) &&
             (GetRole() != ROLE_MELEE_DPS) &&
@@ -2275,6 +2332,8 @@ void PartyBotAI::UpdateInCombatAI_Hunter()
 
 void PartyBotAI::UpdateOutOfCombatAI_Mage()
 {
+    RebuffCandidate bestCandidate;
+
     if (m_spells.mage.pRemoveLesserCurse)
     {
         if (Unit* pFriend = SelectDispelTarget(m_spells.mage.pRemoveLesserCurse))
@@ -2302,6 +2361,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Mage()
                 return;
             }
         }
+        EvaluateRebuffTarget(m_spells.mage.pArcaneBrilliance, bestCandidate);
     }
     else if (m_spells.mage.pArcaneIntellect)
     {
@@ -2317,6 +2377,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Mage()
                 }
             }
         }
+        EvaluateRebuffTarget(m_spells.mage.pArcaneIntellect, bestCandidate);
     }
 
     if (m_spells.mage.pMageArmor && CanTryToCastSpell(me, m_spells.mage.pMageArmor))
@@ -2396,6 +2457,16 @@ void PartyBotAI::UpdateOutOfCombatAI_Mage()
                 me->ClearTarget();
                 return;
             }
+        }
+    }
+
+    if (bestCandidate.target && bestCandidate.spell)
+    {
+        if (DoCastSpell(bestCandidate.target, bestCandidate.spell) == SPELL_CAST_OK)
+        {
+            m_isBuffing = true;
+            me->ClearTarget();
+            return;
         }
     }
 
@@ -2666,6 +2737,8 @@ void PartyBotAI::UpdateInCombatAI_Mage()
 
 void PartyBotAI::UpdateOutOfCombatAI_Priest()
 {
+    RebuffCandidate bestCandidate;
+
     if (m_spells.priest.pDispelMagic)
     {
         if (Unit* pFriend = SelectDispelTarget(m_spells.priest.pDispelMagic))
@@ -2712,6 +2785,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Priest()
                 }
             }
         }
+        EvaluateRebuffTarget(m_spells.priest.pPrayerofFortitude, bestCandidate);
     }
     else if (m_spells.priest.pPowerWordFortitude)
     {
@@ -2727,6 +2801,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Priest()
                 }
             }
         }
+        EvaluateRebuffTarget(m_spells.priest.pPowerWordFortitude, bestCandidate);
     }
 
     if (m_spells.priest.pPrayerofSpirit)
@@ -2743,6 +2818,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Priest()
                 }
             }
         }
+        EvaluateRebuffTarget(m_spells.priest.pPrayerofSpirit, bestCandidate);
     }
     else if (m_spells.priest.pDivineSpirit)
     {
@@ -2758,6 +2834,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Priest()
                 }
             }
         }
+        EvaluateRebuffTarget(m_spells.priest.pDivineSpirit, bestCandidate);
     }
 
     if (m_spells.priest.pPrayerofShadowProtection)
@@ -2774,6 +2851,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Priest()
                 }
             }
         }
+        EvaluateRebuffTarget(m_spells.priest.pPrayerofShadowProtection, bestCandidate);
     }
     else if (m_spells.priest.pShadowProtection)
     {
@@ -2789,6 +2867,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Priest()
                 }
             }
         }
+        EvaluateRebuffTarget(m_spells.priest.pShadowProtection, bestCandidate);
     }
 
     if (m_spells.priest.pFearWard)
@@ -2805,12 +2884,23 @@ void PartyBotAI::UpdateOutOfCombatAI_Priest()
                 }
             }
         }
+        EvaluateRebuffTarget(m_spells.priest.pFearWard, bestCandidate);
     }
 
     if (m_spells.priest.pInnerFire &&
         CanTryToCastSpell(me, m_spells.priest.pInnerFire))
     {
         if (DoCastSpell(me, m_spells.priest.pInnerFire) == SPELL_CAST_OK)
+        {
+            m_isBuffing = true;
+            me->ClearTarget();
+            return;
+        }
+    }
+
+    if (bestCandidate.target && bestCandidate.spell)
+    {
+        if (DoCastSpell(bestCandidate.target, bestCandidate.spell) == SPELL_CAST_OK)
         {
             m_isBuffing = true;
             me->ClearTarget();
@@ -2986,7 +3076,7 @@ void PartyBotAI::UpdateInCombatAI_Priest()
                 return;
         }
 
-        if (m_spells.priest.pVampiricEmbrace &&
+        if (m_spells.priest.pVampiricEmbrace && !IsTargetDeathWithinSeconds(pVictim, 10.0f) &&
             CanTryToCastSpell(pVictim, m_spells.priest.pVampiricEmbrace))
         {
             if (DoCastSpell(pVictim, m_spells.priest.pVampiricEmbrace) == SPELL_CAST_OK)
@@ -3000,7 +3090,7 @@ void PartyBotAI::UpdateInCombatAI_Priest()
                 return;
         }
 
-        if (m_spells.priest.pShadowWordPain && !IsTargetDeathWithinSeconds(pVictim, 10.0f) &&
+        if (m_spells.priest.pShadowWordPain && !IsTargetDeathWithinSeconds(pVictim, 7.0f) &&
             CanTryToCastSpell(pVictim, m_spells.priest.pShadowWordPain))
         {
             if (DoCastSpell(pVictim, m_spells.priest.pShadowWordPain) == SPELL_CAST_OK)
@@ -3030,7 +3120,7 @@ void PartyBotAI::UpdateInCombatAI_Priest()
                 return;
         }
 
-        if (m_spells.priest.pMindFlay && !IsTargetDeathWithinSeconds(pVictim, 3.0f) && (!GetAttackersInRangeCount(10.0f) || me->HasAuraType(SPELL_AURA_SCHOOL_ABSORB)) && CanTryToCastSpell(pVictim, m_spells.priest.pMindFlay))
+        if (m_spells.priest.pMindFlay && (!GetAttackersInRangeCount(10.0f) || me->HasAuraType(SPELL_AURA_SCHOOL_ABSORB)) && CanTryToCastSpell(pVictim, m_spells.priest.pMindFlay))
         {
             if (DoCastSpell(pVictim, m_spells.priest.pMindFlay) == SPELL_CAST_OK)
                 return;
@@ -4093,6 +4183,8 @@ bool PartyBotAI::EnterCombatDruidForm()
 
 void PartyBotAI::UpdateOutOfCombatAI_Druid()
 {
+    RebuffCandidate bestCandidate;
+
     // Make sure bot leaves combat form if his role is changed to healer.
     if ((GetRole() == ROLE_HEALER || (GetRole() == ROLE_TANK && me->GetPowerPercent(POWER_RAGE) == 0) && !me->GetVictim()) &&
         me->GetShapeshiftForm() != FORM_NONE &&
@@ -4153,6 +4245,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Druid()
                 }
             }
         }
+        EvaluateRebuffTarget(m_spells.druid.pGiftoftheWild, bestCandidate);
     }
     else if (m_spells.druid.pMarkoftheWild)
     {
@@ -4169,6 +4262,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Druid()
                 }
             }
         }
+        EvaluateRebuffTarget(m_spells.druid.pMarkoftheWild, bestCandidate);
     }
 
     if (m_spells.druid.pThorns)
@@ -4186,6 +4280,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Druid()
                 }
             }
         }
+        EvaluateRebuffTarget(m_spells.druid.pThorns, bestCandidate);
     }
 
     if (foundBuffTarget && me->GetShapeshiftForm() != FORM_NONE &&
@@ -4193,6 +4288,16 @@ void PartyBotAI::UpdateOutOfCombatAI_Druid()
     {
         me->RemoveSpellsCausingAura(SPELL_AURA_MOD_SHAPESHIFT);
         return;
+    }
+
+    if (bestCandidate.target && bestCandidate.spell)
+    {
+        if (DoCastSpell(bestCandidate.target, bestCandidate.spell) == SPELL_CAST_OK)
+        {
+            m_isBuffing = true;
+            me->ClearTarget();
+            return;
+        }
     }
 
     if (m_spells.druid.pNaturesGrasp &&

@@ -42,6 +42,13 @@ public:
         m_temporaryCharacter = false;
     }
 
+    struct RebuffCandidate
+    {
+        Unit* target = nullptr;
+        SpellEntry const* spell = nullptr;
+        int32 auraDuration = 0;
+    };
+
     bool OnSessionLoaded(PlayerBotEntry* entry, WorldSession* sess) final;
     void OnPlayerLogin() final;
     void UpdateAI(uint32 const diff) final;
@@ -79,6 +86,8 @@ public:
     Player* SelectResurrectionTarget() const;
     Player* SelectShieldTarget() const;
     Unit* SelectBuffTargetByRole(SpellEntry const* pSpellEntry, CombatBotRoles role) const;
+    void EvaluateRebuffTarget(SpellEntry const* spell, RebuffCandidate& bestCandidate, bool asCaster = false, Unit* pTarget = nullptr);
+    void EvaluateRebuffTargetForAuraHolder(SpellEntry const* pSpellEntry, RebuffCandidate& bestCandidate, SpellAuraHolder* auraHolder);
     Unit* GetMarkedTarget(RaidTargetIcon mark) const;
     bool CanUseCrowdControl(SpellEntry const* pSpellEntry, Unit* pTarget) const;
     bool CrowdControledMarkedTargetsExistNear(Unit const* pTarget, float radius = 15.0f) const;

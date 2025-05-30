@@ -2699,7 +2699,7 @@ bool CombatBotBaseAI::IsValidBuffTarget(Unit const* pTarget, SpellEntry const* p
     return true;
 }
 
-bool CombatBotBaseAI::IsValidSelectBuffTarget(Unit const* pTarget, SpellEntry const* pSpellEntry) const
+bool CombatBotBaseAI::IsValidSelectBuffTarget(Unit const* pTarget, SpellEntry const* pSpellEntry, bool rebuff) const
 {
     if (pSpellEntry == m_spells.warlock.pUnendingBreath && !pTarget->IsSwimming())
         return false;
@@ -2708,7 +2708,7 @@ bool CombatBotBaseAI::IsValidSelectBuffTarget(Unit const* pTarget, SpellEntry co
         return false;
 
     return me->IsValidHelpfulTarget(pTarget) &&
-        IsValidBuffTarget(pTarget, pSpellEntry) &&
+        (rebuff || IsValidBuffTarget(pTarget, pSpellEntry)) &&
         !RecentSpellExistsForGroup(pTarget->GetGUIDLow(), pSpellEntry->Id) &&
         !pTarget->HasAuraType(SPELL_AURA_MOD_UNATTACKABLE) &&   // Imp's phase shift
         me->IsWithinLOSInMap(pTarget) &&
@@ -2737,6 +2737,51 @@ Unit* CombatBotBaseAI::SelectBuffTarget(SpellEntry const* pSpellEntry) const
     }
 
     return nullptr;
+}
+
+Unit* CombatBotBaseAI::SelectRebuffTarget(SpellEntry const* pSpellEntry) const
+{
+    int32 minDuration = 0;
+    Unit* pMinUnit = nullptr;
+
+    Group* pGroup = me->GetGroup();
+    if (pGroup)
+    {
+        for (GroupReference* itr = pGroup->GetFirstMember(); itr != nullptr; itr = itr->next())
+        {
+            if (Player* pMember = itr->getSource())
+            {
+                if (SpellAuraHolder* pAuraHolder = pMember->GetSpellAuraHolder(pSpellEntry->Id))
+                {
+                    if (pMinUnit == nullptr || pAuraHolder->GetAuraDuration() < minDuration)
+                    {
+                        if (IsValidSelectBuffTarget(pMember, pSpellEntry, true) && CanTryToCastSpell(pMember, pSpellEntry, true))
+                        {
+                            minDuration = pAuraHolder->GetAuraDuration();
+                            pMinUnit = pMember;
+                        }
+                    }
+                }
+
+                if (Pet* pPet = pMember->GetPet())
+                {
+                    if (SpellAuraHolder* pAuraHolder = pPet->GetSpellAuraHolder(pSpellEntry->Id))
+                    {
+                        if (pMinUnit == nullptr || pAuraHolder->GetAuraDuration() < minDuration)
+                        {
+                            if (IsValidSelectBuffTarget(pPet, pSpellEntry, true) && CanTryToCastSpell(pPet, pSpellEntry, true))
+                            {
+                                minDuration = pAuraHolder->GetAuraDuration();
+                                pMinUnit = pPet;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return pMinUnit;
 }
 
 Unit* CombatBotBaseAI::SelectDispelTarget(SpellEntry const* pSpellEntry) const
