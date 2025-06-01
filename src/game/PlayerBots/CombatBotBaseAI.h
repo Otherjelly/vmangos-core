@@ -686,6 +686,14 @@ public:
     static constexpr float RECENT_SAFE_SPOT_DISTANCE_STORE = 2.0f;
     std::array<RecentSafeSpot, RECENT_SAFE_SPOT_SIZE> m_recentSafeSpots; // TODO: Generic circular buffer
     uint8 m_recentSafeSpotsIndex = 0;
+
+    struct GroupData
+    {
+        Position losPosition;
+    };
+    static std::map<uint32, GroupData> groupIdToDataMap;
+    static GroupData* GetGroupData(Player* player);
+    GroupData* m_groupData;
 };
 
 #endif

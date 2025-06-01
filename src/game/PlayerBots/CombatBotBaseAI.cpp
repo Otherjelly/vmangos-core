@@ -2588,6 +2588,11 @@ bool CombatBotBaseAI::FindAndPreHealTarget()
 
 bool CombatBotBaseAI::IsValidHostileTarget(Unit const* pTarget) const
 {
+    if (m_groupData && !m_groupData->losPosition.IsEmpty() &&
+        pTarget->GetDistance2d(m_groupData->losPosition) < 60.0f &&
+        !pTarget->IsWithinLOS(m_groupData->losPosition.x, m_groupData->losPosition.y, m_groupData->losPosition.z))
+        return false;
+
     return me->IsValidAttackTarget(pTarget) &&
            me->IsWithinDist(pTarget, 50.0f) &&
            pTarget->IsVisibleForOrDetect(me, me, false) &&
@@ -4031,4 +4036,18 @@ void CombatBotBaseAI::OnPacketReceived(WorldPacket const* packet)
             return;
         }
     }
+}
+
+std::map<uint32, CombatBotBaseAI::GroupData> CombatBotBaseAI::groupIdToDataMap;
+CombatBotBaseAI::GroupData* CombatBotBaseAI::GetGroupData(Player* player)
+{
+    if (!player)
+        return nullptr;
+
+    Group* group = player->GetGroup();
+    if (!group)
+        return nullptr;
+
+    uint32 groupId = group->GetId();
+    return &groupIdToDataMap[groupId];
 }

@@ -1989,6 +1989,28 @@ bool ChatHandler::HandlePartyBotMoveFollowCommand(char* args)
     return true;
 }
 
+bool ChatHandler::HandlePartyBotLosCommand(char* args)
+{
+    Player* pPlayer = GetSession()->GetPlayer();
+    if (CombatBotBaseAI::GroupData* data = CombatBotBaseAI::GetGroupData(pPlayer))
+    {
+        if (data->losPosition.IsEmpty())
+        {
+            data->losPosition = pPlayer->GetPosition();
+            SendSysMessage("LoS position set.");
+        }
+        else
+        {
+            data->losPosition = Position();
+            SendSysMessage("LoS position cleared.");
+        }
+        return true;
+    }
+
+    SendSysMessage("LoS position not updated");
+    return false;
+}
+
 bool ChatHandler::HandlePartyBotStayCommand(char* args)
 {
     return HandlePartyBotStayHelper(args, true);

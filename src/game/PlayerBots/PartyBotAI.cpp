@@ -997,6 +997,7 @@ void PartyBotAI::EvaluateRebuffTarget(SpellEntry const* pSpellEntry, RebuffCandi
                 int32 duration = auraHolder->GetAuraDuration();
                 if (bestCandidate.target == nullptr || duration < bestCandidate.auraDuration)
                     bestCandidate = {pTarget, pSpellEntry, duration};
+            }
         }
     }
 }
@@ -1205,6 +1206,7 @@ void PartyBotAI::UpdateAI(uint32 const diff)
     {
         return;
     }
+    m_groupData = GetGroupData(me);
 
     if (!pLeader->IsInWorld())
         return;
@@ -1339,6 +1341,48 @@ void PartyBotAI::UpdateAI(uint32 const diff)
 
         if (me->IsNonMeleeSpellCasted())
             return;
+    }
+
+    bool moveToLos = false;
+    if (!m_groupData->losPosition.IsEmpty() && me->GetDistance2d(m_groupData->losPosition) < 60.0f)
+    {
+        for (auto const& pAttacker : me->GetAttackers())
+        {
+            if (!pAttacker->IsWithinLOS(m_groupData->losPosition.x, m_groupData->losPosition.y, m_groupData->losPosition.z))
+            {
+                moveToLos = true;
+                break;
+            }
+        }
+        if (!moveToLos)
+        {
+            if (Pet* pPet = me->GetPet())
+            {
+                for (auto const& pAttacker : pPet->GetAttackers())
+                {
+                    if (!pAttacker->IsWithinLOS(m_groupData->losPosition.x, m_groupData->losPosition.y, m_groupData->losPosition.z))
+                    {
+                        moveToLos = true;
+                        pPet->GetCharmInfo()->SetReactState(REACT_PASSIVE);
+                        pPet->HandlePetCommand(COMMAND_FOLLOW, nullptr);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    if (moveToLos)
+    {
+        sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "UpdateAI - %s moveToLos", me->GetName());
+        if (me->GetMotionMaster()->GetCurrentMovementGeneratorType() != IDLE_MOTION_TYPE)
+        {
+            sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "UpdateAI - %s moveToLos set", me->GetName());
+            if (!me->IsStopped())
+                me->StopMoving();
+            me->GetMotionMaster()->Clear();
+        }
+        me->MonsterMoveWithSpeed(m_groupData->losPosition.x, m_groupData->losPosition.y, m_groupData->losPosition.z, -10.0f, me->GetSpeed(MOVE_RUN), MOVE_PATHFINDING | MOVE_RUN_MODE);
+        return;
     }
 
     Unit* pVictim = me->GetVictim();
@@ -2313,7 +2357,7 @@ void PartyBotAI::UpdateInCombatAI_Hunter()
         }
 
         // Don't both getting distance if they're about to die, unless there's more of em
-        if (GetRole() != ROLE_MELEE_DPS && pVictim->CanReachWithMeleeAutoAttack(me) && IsTargetDeathWithinSeconds(pVictim, 3.0f) && me->GetEnemyCountInRadiusAround(me, 8.0f) < 2)
+        if (GetRole() != ROLE_MELEE_DPS && me->CanReachWithMeleeAutoAttack(pVictim) && IsTargetDeathWithinSeconds(pVictim, 3.0f) && me->GetEnemyCountInRadiusAround(me, 8.0f) < 2)
             return;
 
         if (!me->HasUnitState(UNIT_STATE_ROOT) &&
@@ -2388,6 +2432,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Mage()
             me->ClearTarget();
             return;
         }
+        EvaluateRebuffTarget(m_spells.mage.pMageArmor, bestCandidate, false, me);
     }
     else if (m_spells.mage.pIceArmor && (!m_spells.mage.pMageArmor || !me->HasAura(m_spells.mage.pMageArmor->Id)) && CanTryToCastSpell(me, m_spells.mage.pIceArmor))
     {
@@ -2397,6 +2442,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Mage()
             me->ClearTarget();
             return;
         }
+        EvaluateRebuffTarget(m_spells.mage.pIceArmor, bestCandidate, false, me);
     }
 
     if (m_spells.mage.pIceBarrier &&
@@ -2896,6 +2942,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Priest()
             me->ClearTarget();
             return;
         }
+        EvaluateRebuffTarget(m_spells.priest.pInnerFire, bestCandidate, false, me);
     }
 
     if (bestCandidate.target && bestCandidate.spell)
@@ -3163,6 +3210,8 @@ void PartyBotAI::UpdateInCombatAI_Priest()
 
 void PartyBotAI::UpdateOutOfCombatAI_Warlock()
 {
+    RebuffCandidate bestCandidate;
+
     if (m_spells.warlock.pDetectInvisibility)
     {
         if (Unit* pTarget = SelectBuffTarget(m_spells.warlock.pDetectInvisibility))
@@ -3177,6 +3226,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Warlock()
                 }
             }
         }
+        EvaluateRebuffTarget(m_spells.warlock.pDetectInvisibility, bestCandidate);
     }
     else if (m_spells.warlock.pDetectLesserInvisibility)
     {
@@ -3192,6 +3242,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Warlock()
                 }
             }
         }
+        EvaluateRebuffTarget(m_spells.warlock.pDetectLesserInvisibility, bestCandidate);
     }
 
     if (m_spells.warlock.pUnendingBreath)
@@ -3208,6 +3259,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Warlock()
                 }
             }
         }
+        EvaluateRebuffTarget(m_spells.warlock.pUnendingBreath, bestCandidate);
     }
 
     if (m_spells.warlock.pDemonArmor)
@@ -3218,6 +3270,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Warlock()
             me->ClearTarget();
             return;
         }
+        EvaluateRebuffTarget(m_spells.warlock.pDemonArmor, bestCandidate, false, me);
     }
     else if (m_spells.warlock.pDemonSkin)
     {
@@ -3227,6 +3280,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Warlock()
             me->ClearTarget();
             return;
         }
+        EvaluateRebuffTarget(m_spells.warlock.pDemonArmor, bestCandidate, false, me);
     }
 
     if (m_spells.warlock.pLifeTap &&
@@ -3288,6 +3342,17 @@ void PartyBotAI::UpdateOutOfCombatAI_Warlock()
                 me->ClearTarget();
                 return;
             }
+        }
+    }
+
+    if (bestCandidate.target && bestCandidate.spell)
+    {
+        // sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "UpdateOutOfCombatAI_Warlock - %s found %s for %s duration %d", me->GetName(), bestCandidate.target->GetName(), bestCandidate.spell->SpellName[0].c_str(), bestCandidate.auraDuration / 60000);
+        if (DoCastSpell(bestCandidate.target, bestCandidate.spell) == SPELL_CAST_OK)
+        {
+            m_isBuffing = true;
+            me->ClearTarget();
+            return;
         }
     }
 

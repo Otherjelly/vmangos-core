@@ -112,6 +112,7 @@ ChatCommand * ChatHandler::getCommandTable()
         { "unselect",   SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotUnselectCommand,    "", nullptr },
         { "movesector", SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotMoveSectorCommand,  "", nullptr },
         { "movefollow", SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotMoveFollowCommand,  "", nullptr },
+        { "los",        SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotLosCommand,         "", nullptr },
         { "stay",       SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotStayCommand,        "", nullptr },
         { "unstay",     SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotUnstayCommand,      "", nullptr },
         { "pause",      SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotPauseCommand,       "", nullptr },
