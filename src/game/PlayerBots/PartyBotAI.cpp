@@ -2405,7 +2405,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Mage()
                 return;
             }
         }
-        EvaluateRebuffTarget(m_spells.mage.pArcaneBrilliance, bestCandidate);
+        //EvaluateRebuffTarget(m_spells.mage.pArcaneBrilliance, bestCandidate);
     }
     else if (m_spells.mage.pArcaneIntellect)
     {
@@ -2424,23 +2424,29 @@ void PartyBotAI::UpdateOutOfCombatAI_Mage()
         EvaluateRebuffTarget(m_spells.mage.pArcaneIntellect, bestCandidate);
     }
 
-    if (m_spells.mage.pMageArmor && CanTryToCastSpell(me, m_spells.mage.pMageArmor))
+    if (m_spells.mage.pMageArmor)
     {
-        if (DoCastSpell(me, m_spells.mage.pMageArmor) == SPELL_CAST_OK)
+        if (CanTryToCastSpell(me, m_spells.mage.pMageArmor))
         {
-            m_isBuffing = true;
-            me->ClearTarget();
-            return;
+            if (DoCastSpell(me, m_spells.mage.pMageArmor) == SPELL_CAST_OK)
+            {
+                m_isBuffing = true;
+                me->ClearTarget();
+                return;
+            }
         }
         EvaluateRebuffTarget(m_spells.mage.pMageArmor, bestCandidate, false, me);
     }
-    else if (m_spells.mage.pIceArmor && (!m_spells.mage.pMageArmor || !me->HasAura(m_spells.mage.pMageArmor->Id)) && CanTryToCastSpell(me, m_spells.mage.pIceArmor))
+    else if (m_spells.mage.pIceArmor && (!m_spells.mage.pMageArmor || !me->HasAura(m_spells.mage.pMageArmor->Id)))
     {
-        if (DoCastSpell(me, m_spells.mage.pIceArmor) == SPELL_CAST_OK)
+        if (CanTryToCastSpell(me, m_spells.mage.pIceArmor))
         {
-            m_isBuffing = true;
-            me->ClearTarget();
-            return;
+            if (DoCastSpell(me, m_spells.mage.pIceArmor) == SPELL_CAST_OK)
+            {
+                m_isBuffing = true;
+                me->ClearTarget();
+                return;
+            }
         }
         EvaluateRebuffTarget(m_spells.mage.pIceArmor, bestCandidate, false, me);
     }
@@ -2831,7 +2837,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Priest()
                 }
             }
         }
-        EvaluateRebuffTarget(m_spells.priest.pPrayerofFortitude, bestCandidate);
+        //EvaluateRebuffTarget(m_spells.priest.pPrayerofFortitude, bestCandidate);
     }
     else if (m_spells.priest.pPowerWordFortitude)
     {
@@ -2933,14 +2939,16 @@ void PartyBotAI::UpdateOutOfCombatAI_Priest()
         EvaluateRebuffTarget(m_spells.priest.pFearWard, bestCandidate);
     }
 
-    if (m_spells.priest.pInnerFire &&
-        CanTryToCastSpell(me, m_spells.priest.pInnerFire))
+    if (m_spells.priest.pInnerFire)
     {
-        if (DoCastSpell(me, m_spells.priest.pInnerFire) == SPELL_CAST_OK)
+        if (CanTryToCastSpell(me, m_spells.priest.pInnerFire))
         {
-            m_isBuffing = true;
-            me->ClearTarget();
-            return;
+            if (DoCastSpell(me, m_spells.priest.pInnerFire) == SPELL_CAST_OK)
+            {
+                m_isBuffing = true;
+                me->ClearTarget();
+                return;
+            }
         }
         EvaluateRebuffTarget(m_spells.priest.pInnerFire, bestCandidate, false, me);
     }
@@ -4310,7 +4318,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Druid()
                 }
             }
         }
-        EvaluateRebuffTarget(m_spells.druid.pGiftoftheWild, bestCandidate);
+        //EvaluateRebuffTarget(m_spells.druid.pGiftoftheWild, bestCandidate);
     }
     else if (m_spells.druid.pMarkoftheWild)
     {
