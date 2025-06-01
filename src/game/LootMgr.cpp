@@ -39,7 +39,7 @@ static eConfigFloatValues const qualityToRate[MAX_ITEM_QUALITY] =
     CONFIG_FLOAT_RATE_DROP_ITEM_LEGENDARY,                               // ITEM_QUALITY_LEGENDARY
     CONFIG_FLOAT_RATE_DROP_ITEM_ARTIFACT,                                // ITEM_QUALITY_ARTIFACT
 };
-static bool alwaysPartyLootQuestItems = false;
+static bool alwaysPartyLootQuestItems = false; // TODO: config file
 
 LootStore LootTemplates_Creature(     "creature_loot_template",      "creature entry",                     true);
 LootStore LootTemplates_Disenchant(   "disenchant_loot_template",    "item disenchant id",                 true);
