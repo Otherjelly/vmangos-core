@@ -74,6 +74,7 @@ public:
     bool ExistsAsPlayerInGroupByRole(CombatBotRoles role, bool mustBeAlive) const;
     bool ExistsAsTankInGroupForThreatCheck() const;
     bool ExistsAsHealerInGroupForOffHealCheck() const;
+    CombatBotRoles FindMajorityRoleForClass(Classes unitClass) const;
 
     bool CheckThreatOK(Unit const* pTarget, SpellEntry const* pSpellEntry = nullptr) const;
     bool CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry, bool ignoreAppliesAuraCheck = false, bool checkAuraCaster = false, bool ignoreStacks = false) const final;
@@ -91,6 +92,7 @@ public:
     Unit* GetMarkedTarget(RaidTargetIcon mark) const;
     bool CanUseCrowdControl(SpellEntry const* pSpellEntry, Unit* pTarget) const;
     bool CrowdControledMarkedTargetsExistNear(Unit const* pTarget, float radius = 15.0f) const;
+    Aura* GetAura(AuraType type, int32 maxDuration);
     bool DrinkAndEat();
     bool ShouldAutoRevive() const;
     bool IsValidDistancingTarget(Unit* pTarget, Unit* pEnemy);
@@ -98,6 +100,7 @@ public:
     bool RunAwayFromTarget(Unit* pEnemy, float distance);
     bool RunAwayFromTarget(Unit* pEnemy);
     void MoveChase(Unit* target, float dist = 0.0f, float angle = 0.0f);
+    void MoveFollow(Unit* pLeader);
     void MovePointNear(float x, float y, float z, Unit* pVictim = nullptr);
     bool StayBehind(Unit* pVictim);
     bool CrowdControlMarkedTargets();
@@ -130,6 +133,7 @@ public:
     std::vector<RaidTargetIcon> m_marksToCC;
     std::vector<RaidTargetIcon> m_marksToFocus;
     ShortTimeTracker m_updateTimer;
+    ShortTimeTracker m_buffTimer;
     ObjectGuid m_cloneGuid;
     uint8 m_race = 0;
     uint8 m_class = 0;

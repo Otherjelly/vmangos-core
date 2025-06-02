@@ -2699,6 +2699,11 @@ bool CombatBotBaseAI::IsValidBuffTarget(Unit const* pTarget, SpellEntry const* p
         for (const auto& it : morePowerfulSpells)
             if (it == i.first)
                 return false;
+
+        // Fudge a blessing vs greater blessing check
+        if (SpellEntry const* spellInfo_2 = sSpellMgr.GetSpellEntry(i.first))
+            if (spellInfo_2->GetSpellFamilyName() == pSpellEntry->GetSpellFamilyName() && spellInfo_2->EffectApplyAuraName[0] == pSpellEntry->EffectApplyAuraName[0] && (spellInfo_2->GetMaxDuration() > pSpellEntry->GetMaxDuration() || spellInfo_2->EffectBasePoints[0] > pSpellEntry->EffectBasePoints[0]))
+                return false;
     }
         
     return true;
@@ -2717,7 +2722,7 @@ bool CombatBotBaseAI::IsValidSelectBuffTarget(Unit const* pTarget, SpellEntry co
         !RecentSpellExistsForGroup(pTarget->GetGUIDLow(), pSpellEntry->Id) &&
         !pTarget->HasAuraType(SPELL_AURA_MOD_UNATTACKABLE) &&   // Imp's phase shift
         me->IsWithinLOSInMap(pTarget) &&
-        me->IsWithinDist(pTarget, 30.0f);
+        me->IsWithinDist(pTarget, 30.0f, true, SizeFactor::CombatReach);
 }
 
 Unit* CombatBotBaseAI::SelectBuffTarget(SpellEntry const* pSpellEntry) const
@@ -2845,23 +2850,69 @@ void CombatBotBaseAI::SummonPetIfNeeded()
 
         if (m_temporaryCharacter)
         {
-             uint32 petId = PickRandomValue( PET_WOLF, PET_CAT, PET_BEAR, PET_CRAB, PET_GORILLA, PET_BIRD,
-                                             PET_BOAR, PET_BAT, PET_CROC, PET_SPIDER, PET_OWL, PET_STRIDER,
-                                             PET_SCORPID, PET_SERPENT, PET_RAPTOR, PET_TURTLE, PET_HYENA );
-             if (Creature* pCreature = me->SummonCreature(petId,
-                 me->GetPositionX(), me->GetPositionY(), me->GetPositionZ(), 0.0f,
-                 TEMPSUMMON_TIMED_COMBAT_OR_DEAD_DESPAWN, 3000, false, 3000))
+            uint32 petId = PickRandomValue( PET_WOLF, PET_CAT, PET_BEAR, PET_CRAB, PET_GORILLA, PET_BIRD,
+                                            PET_BOAR, PET_BAT, PET_CROC, PET_SPIDER, PET_OWL, PET_STRIDER,
+                                            PET_SCORPID, PET_SERPENT, PET_RAPTOR, PET_TURTLE, PET_HYENA );
+            if (Creature* pCreature = me->SummonCreature(petId,
+                me->GetPositionX(), me->GetPositionY(), me->GetPositionZ(), 0.0f,
+                TEMPSUMMON_TIMED_COMBAT_OR_DEAD_DESPAWN, 3000, false, 3000))
             {
-                 pCreature->SetLevel(me->GetLevel());
-                 me->CastSpell(pCreature, SPELL_TAME_BEAST, true);
-             }
+                pCreature->SetLevel(me->GetLevel());
+                me->CastSpell(pCreature, SPELL_TAME_BEAST, true);
+            }
         }
     }
     else if (me->GetClass() == CLASS_WARLOCK)
     {
+        uint32 m_summonPetEntry = 0;
         if (me->GetPetGuid() || me->GetCharmGuid())
-            return;
+        {
+            if (m_summonPetEntry != 0)
+            {
+                if (Pet* pPet = me->GetPet())
+                {
+                    CreatureInfo const* cInfo = pPet->GetCreatureInfo();
+                    if (!cInfo)
+                        return;
+                    if (m_summonPetEntry == cInfo->entry)
+                        return;
+                }
+            }
+            else
+                return;
+        }
 
+        if (m_spells.warlock.pDemonicSacrifice)
+        {
+            // Touch of Shadow buff from demonic sacrifice
+            if (me->HasAura(18791))
+                return;
+
+            // TODO: Which pet to sacrifice
+            if (!m_summonPetEntry && me->HasSpell(SPELL_SUMMON_SUCCUBUS))
+                m_summonPetEntry = 1863;
+        }
+
+        // Specific pet
+        if (m_summonPetEntry != 0)
+        {
+            uint32 spell = 0;
+            if (m_summonPetEntry == 416)
+                spell = SPELL_SUMMON_IMP;
+            else if (m_summonPetEntry == 1860)
+                spell = SPELL_SUMMON_VOIDWALKER;
+            else if (m_summonPetEntry == 417)
+                spell = SPELL_SUMMON_FELHUNTER;
+            else if (m_summonPetEntry == 1863)
+                spell = SPELL_SUMMON_SUCCUBUS;
+            if (spell > 0 && me->HasSpell(spell))
+            {
+                me->CastSpell(me, spell, true);
+                return;
+            }
+        }
+
+        // Random pet
         std::vector<uint32> vSummons;
         if (me->HasSpell(SPELL_SUMMON_IMP))
             vSummons.push_back(SPELL_SUMMON_IMP);
@@ -3383,11 +3434,24 @@ bool CombatBotBaseAI::CanTryToCastSpell(Unit const* pTarget, SpellEntry const* p
     return true;
 }
 
+bool CombatBotBaseAI::FaceObject(WorldObject const* pObject)
+{
+    if (true)
+    {
+        float arc = me->IsMoving() ? M_PI_F : M_PI_F / 4;
+        if (!me->HasInArc(pObject, arc))
+        {
+            me->SetFacingToObject(pObject);
+            return true;
+        }
+    }
+    return false;
+}
+
 SpellCastResult CombatBotBaseAI::DoCastSpell(Unit* pTarget, SpellEntry const* pSpellEntry)
 {
-    float arc = me->IsMoving() ? M_PI_F : M_PI_F / 4;
-    if (me != pTarget && pSpellEntry->IsNeedFaceTarget() && !me->HasInArc(pTarget, arc))
-        me->SetFacingToObject(pTarget);
+    if (me != pTarget && pSpellEntry->IsNeedFaceTarget())
+        FaceObject(pTarget);
 
     if (me->IsMounted())
         me->RemoveSpellsCausingAura(SPELL_AURA_MOUNTED);

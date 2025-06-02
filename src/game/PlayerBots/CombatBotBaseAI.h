@@ -141,6 +141,7 @@ public:
     int32 GetIncomingdamage(Unit const* pTarget) const;
     bool AreOthersOnSameTarget(ObjectGuid guid, bool checkMelee = true, bool checkSpells = true) const;
 
+    bool FaceObject(WorldObject const* pObject);
     SpellCastResult DoCastSpell(Unit* pTarget, SpellEntry const* pSpellEntry);
     virtual bool CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry, bool reapplyAura = false, bool checkAuraCaster = false, bool ignoreStacks = false) const;
     bool IsWearingShield(Player* pPlayer) const;
