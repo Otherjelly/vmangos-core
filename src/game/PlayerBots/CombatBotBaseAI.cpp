@@ -2701,9 +2701,21 @@ bool CombatBotBaseAI::IsValidBuffTarget(Unit const* pTarget, SpellEntry const* p
                 return false;
 
         // Fudge a blessing vs greater blessing check
-        if (SpellEntry const* spellInfo_2 = sSpellMgr.GetSpellEntry(i.first))
-            if (spellInfo_2->GetSpellFamilyName() == pSpellEntry->GetSpellFamilyName() && spellInfo_2->EffectApplyAuraName[0] == pSpellEntry->EffectApplyAuraName[0] && (spellInfo_2->GetMaxDuration() > pSpellEntry->GetMaxDuration() || spellInfo_2->EffectBasePoints[0] > pSpellEntry->EffectBasePoints[0]))
-                return false;
+        if (pSpellEntry->IsFitToFamily<SPELLFAMILY_PALADIN, CF_PALADIN_BLESSINGS>())
+        {
+            if (SpellEntry const* spellInfo_2 = sSpellMgr.GetSpellEntry(i.first))
+                if (spellInfo_2->GetSpellFamilyFlags() == pSpellEntry->GetSpellFamilyFlags() && spellInfo_2->EffectApplyAuraName[0] == pSpellEntry->EffectApplyAuraName[0])
+                {
+                    if (abs(spellInfo_2->EffectBasePoints[0]) > abs(pSpellEntry->EffectBasePoints[0]))
+                    {
+                        return false;
+                    }
+                    else if (abs(spellInfo_2->EffectBasePoints[0]) == abs(pSpellEntry->EffectBasePoints[0]) && spellInfo_2->GetMaxDuration() > pSpellEntry->GetMaxDuration())
+                    {
+                        return false;
+                    }
+                }
+        }
     }
         
     return true;

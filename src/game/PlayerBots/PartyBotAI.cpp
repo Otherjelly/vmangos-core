@@ -4519,6 +4519,27 @@ void PartyBotAI::UpdateInCombatAI_Druid()
             return;
     }
 
+    if (GetRole() != ROLE_HEALER && me->GetPowerPercent(POWER_MANA) > 35.0f)
+    {
+        float healAt = 25.0;
+        if (me->GetShapeshiftForm() == FORM_NONE)
+            healAt += 20.0;
+        if (!ExistsAsHealerInGroupForOffHealCheck())
+            healAt += 20.0;
+        if (!me->GetAttackers().empty())
+            healAt -= 20.0;
+        if (Unit* pTarget = SelectHealTarget(healAt, healAt))
+        {
+            if (me->HasAuraType(SPELL_AURA_MOD_SHAPESHIFT))
+            {
+                me->RemoveSpellsCausingAura(SPELL_AURA_MOD_SHAPESHIFT);
+                return;
+            }
+            if (HealInjuredTargetDirect(pTarget))
+                return;
+        }
+    }
+
     // Make sure bot leaves combat form if its role is changed to healer.
     if (!inDesiredForm && me->HasAuraType(SPELL_AURA_MOD_SHAPESHIFT))
     {
