@@ -26,6 +26,7 @@
 #include "Spell.h"
 #include "SpellAuras.h"
 #include "Chat.h"
+#include "Totem.h"
 #include <random>
 
 enum PartyBotSpells
@@ -176,7 +177,7 @@ Unit* PartyBotAI::GetDistancingTarget(Unit* pEnemy)
 
 bool PartyBotAI::RunAwayFromTarget(Unit* pEnemy, float distance)
 {
-    if (m_stay)
+    if (DoNotMove())
         return false;
 
     float ox, oy, oz;
@@ -205,23 +206,28 @@ bool PartyBotAI::RunAwayFromTarget(Unit* pEnemy)
     return RunAwayFromTarget(pEnemy, 15.0f);
 }
 
+bool PartyBotAI::DoNotMove()
+{
+    return m_stay || !m_clientMovementTimer.Passed() || me->HasUnitState(UNIT_STATE_CAN_NOT_MOVE);
+}
+
 void PartyBotAI::MoveChase(Unit* target, float dist, float angle)
 {
-    if (!m_stay)
+    if (!DoNotMove())
         me->GetMotionMaster()->MoveChase(target, dist, angle);
 }
 
 void PartyBotAI::MoveFollow(Unit* pLeader)
 {
-    if (!m_stay)
+    if (!DoNotMove())
         me->GetMotionMaster()->MoveFollow(pLeader, urand(PB_MIN_FOLLOW_DIST, PB_MAX_FOLLOW_DIST), frand(PB_MIN_FOLLOW_ANGLE, PB_MAX_FOLLOW_ANGLE));
 }
 
-void PartyBotAI::MovePointNear(float x, float y, float z, Unit* pVictim)
+void PartyBotAI::MovePoint(float x, float y, float z, Unit* pVictim)
 {
-    if (m_stay)
+    if (DoNotMove())
         return;
-    me->GetMap()->GetWalkHitPosition(nullptr, me->GetPositionX(), me->GetPositionY(), me->GetPositionZ(), x, y, z);
+
     float finalOrientation = -10;
     if (pVictim)
         finalOrientation = fmodf(M_PI_F + pVictim->GetAngle(x, y), 2 * M_PI_F);
@@ -229,8 +235,17 @@ void PartyBotAI::MovePointNear(float x, float y, float z, Unit* pVictim)
     me->GetMotionMaster()->MovePoint(me->GetGUIDLow(), x, y, z, MOVE_PATHFINDING, me->GetSpeed(MOVE_RUN), finalOrientation);
 }
 
+void PartyBotAI::MovePointNear(float x, float y, float z, Unit* pVictim)
+{
+    me->GetMap()->GetWalkHitPosition(nullptr, me->GetPositionX(), me->GetPositionY(), me->GetPositionZ(), x, y, z);
+    MovePoint(x, y, z, pVictim);
+}
+
 bool PartyBotAI::StayBehind(Unit* pVictim)
 {
+    if (DoNotMove())
+        return false;
+
     if (!me->IsMoving() && me->CanReachWithMeleeAutoAttack(pVictim) && pVictim->HasInArc(me) && !me->HasUnitState(UNIT_STATE_NO_FREE_MOVE))
     {
         float x, y, z;
@@ -731,6 +746,42 @@ Unit* PartyBotAI::SelectAttackTarget(Player* pLeader) const
     }
     else
     {
+        // Totems
+        if (GetRole() != ROLE_HEALER)
+        {
+            Group* pGroup = me->GetGroup();
+            for (GroupReference* itr = pGroup->GetFirstMember(); itr != nullptr; itr = itr->next())
+            {
+                if (Player* pMember = itr->getSource())
+                {
+                    auto tryFindTotem = [&](Unit* source) -> Totem*
+                    {
+                        for (Unit* pAttacker : source->GetAttackers())
+                        {
+                            for (int i = 0; i < MAX_TOTEM_SLOT; ++i)
+                            {
+                                if (Totem* pTotem = pAttacker->GetTotem(static_cast<TotemSlot>(i)))
+                                {
+                                    if (pTotem->GetAttackers().empty() || me->GetVictim() == pTotem)
+                                        return pTotem;
+                                }
+                            }
+                        }
+                        return nullptr;
+                    };
+
+                    if (Totem* totem = tryFindTotem(pMember))
+                        return totem;
+
+                    if (Pet* pPet = pMember->GetPet())
+                    {
+                        if (Totem* totem = tryFindTotem(pPet))
+                            return totem;
+                    }
+                }
+            }
+        }
+
         // Stick to marked target in combat.
         if (me->IsInCombat() || pLeader->GetVictim())
         {
@@ -1155,6 +1206,9 @@ void PartyBotAI::UpdateAI(uint32 const diff)
     m_buffTimer.Update(diff);
     if (m_buffTimer.Passed())
         m_buffTimer.Reset(0);
+    m_clientMovementTimer.Update(diff);
+    if (m_clientMovementTimer.Passed())
+        m_clientMovementTimer.Reset(0);
 
     m_updateTimer.Update(diff);
     if (m_updateTimer.Passed())
@@ -1374,7 +1428,7 @@ void PartyBotAI::UpdateAI(uint32 const diff)
         }
 
         // Teleport to leader if too far away.
-        if (!m_noTeleport && !m_stay && !me->IsWithinDistInMap(pLeader, 100.0f) && !IsInDuel())
+        if (!m_noTeleport && !DoNotMove() && !me->IsWithinDistInMap(pLeader, 100.0f) && !IsInDuel())
         {
             if (!me->IsStopped())
                 me->StopMoving();
@@ -1402,7 +1456,7 @@ void PartyBotAI::UpdateAI(uint32 const diff)
     }
 
     bool moveToLos = false;
-    if (!m_groupData->losPosition.IsEmpty() && me->GetDistance2d(m_groupData->losPosition) < 60.0f)
+    if (!m_groupData->losPosition.IsEmpty() && !me->HasUnitState(UNIT_STATE_CAN_NOT_MOVE) && me->GetDistance2d(m_groupData->losPosition) < 60.0f)
     {
         for (auto const& pAttacker : me->GetAttackers())
         {
@@ -1439,7 +1493,7 @@ void PartyBotAI::UpdateAI(uint32 const diff)
                 me->StopMoving();
             me->GetMotionMaster()->Clear();
         }
-        me->MonsterMoveWithSpeed(m_groupData->losPosition.x, m_groupData->losPosition.y, m_groupData->losPosition.z, -10.0f, me->GetSpeed(MOVE_RUN), MOVE_PATHFINDING | MOVE_RUN_MODE);
+        MovePoint(m_groupData->losPosition.x, m_groupData->losPosition.y, m_groupData->losPosition.z);
         return;
     }
 
@@ -2548,7 +2602,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Mage()
         }
     }
 
-    if (!me->IsMoving())
+    if (!me->IsMoving() && me->GetPowerPercent(POWER_MANA) == 100.0f)
     {
         if (m_noGenerateItems && m_spells.mage.pConjureWater && CanTryToCastSpell(me, m_spells.mage.pConjureWater) && CountInventoryItem(m_spells.mage.pConjureWater) < 40)
         {

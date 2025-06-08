@@ -25,6 +25,7 @@
 #include "Opcodes.h"
 #include "Log.h"
 #include "Player.h"
+#include "CombatBotBaseAI.h"
 #include "MapManager.h"
 #include "Transport.h"
 #include "BattleGround.h"
@@ -298,20 +299,19 @@ void WorldSession::HandleMovementOpcodes(WorldPacket& recvData)
     if (pMover->HasPendingSplineDone())
         return;
 
-    if (opcode != MSG_MOVE_STOP && opcode != MSG_MOVE_FALL_LAND && pMover->GetMotionMaster()->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE)
+    Player* pPlayerMover = pMover->ToPlayer();
+    if (pPlayerMover && pPlayerMover->AI())
     {
-        sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "MovementHandler - %s stopped follow", pMover->GetName());
-        pMover->StopMoving();
-        pMover->GetMotionMaster()->Clear(false, true);
-        pMover->GetMotionMaster()->MoveIdle();
+        if (CombatBotBaseAI* pAI = dynamic_cast<CombatBotBaseAI*>(pPlayerMover->AI()))
+        {
+            pAI->OnPacketSentFromClient(&recvData);
+        }
     }
 
     // currently being moved by server
     if (!pMover->movespline->Finalized())
         return;
         
-    Player* pPlayerMover = pMover->ToPlayer();
-
     // ignore, waiting processing in WorldSession::HandleMoveWorldportAckOpcode and WorldSession::HandleMoveTeleportAck
     if (pPlayerMover && pPlayerMover->IsBeingTeleported())
         return;

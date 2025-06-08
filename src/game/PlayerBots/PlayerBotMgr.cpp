@@ -2165,6 +2165,90 @@ bool ChatHandler::HandlePartyBotPullCommand(char* args)
     return true;
 }
 
+bool ChatHandler::HandlePartyBotChangeSealCommand(char* args)
+{
+    std::set<PartyBotAI*> matchingBots = MembersFromString(args);
+    for (PartyBotAI* pAI : matchingBots)
+    {
+        if (Player* pMember = pAI->me)
+        {
+            if (pMember->GetClass() == CLASS_PALADIN)
+            {
+                SpellEntry const* currentSeal = pAI->m_spells.paladin.pSeal;
+
+                auto const& seals = std::vector<SpellEntry const*>{
+                    pAI->m_spells.paladin.pSealOfFury,
+                    pAI->m_spells.paladin.pSealOfRighteousness,
+                    pAI->m_spells.paladin.pSealOfCommand,
+                    pAI->m_spells.paladin.pSealOfLight,
+                    pAI->m_spells.paladin.pSealOfWisdom,
+                };
+
+                auto it = std::find(seals.begin(), seals.end(), currentSeal);
+                if (it == seals.end())
+                    it = seals.begin();
+
+                std::size_t count = seals.size();
+                for (std::size_t i = 1; i <= count; ++i)
+                {
+                    auto nextIndex = (std::distance(seals.begin(), it) + i) % count;
+                    if (seals[nextIndex])
+                    {
+                        pAI->m_spells.paladin.pSeal = seals[nextIndex];
+                        pMember->PMonsterSay("Now using seal %s", pAI->m_spells.paladin.pSeal->SpellName[0].c_str());
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+bool ChatHandler::HandlePartyBotChangeAuraCommand(char* args)
+{
+    std::set<PartyBotAI*> matchingBots = MembersFromString(args);
+    for (PartyBotAI* pAI : matchingBots)
+    {
+        if (Player* pMember = pAI->me)
+        {
+            if (pMember->GetClass() == CLASS_PALADIN)
+            {
+                SpellEntry const* currentAura = pAI->m_spells.paladin.pAura;
+
+                auto const& auras = std::vector<SpellEntry const*>{
+                    pAI->m_spells.paladin.pDevotionAura,
+                    pAI->m_spells.paladin.pConcentrationAura,
+                    pAI->m_spells.paladin.pRetributionAura,
+                    pAI->m_spells.paladin.pSanctityAura,
+                    pAI->m_spells.paladin.pShadowResistanceAura,
+                    pAI->m_spells.paladin.pFrostResistanceAura,
+                    pAI->m_spells.paladin.pFireResistanceAura,
+                };
+
+                auto it = std::find(auras.begin(), auras.end(), currentAura);
+                if (it == auras.end())
+                    it = auras.begin();
+
+                std::size_t count = auras.size();
+                for (std::size_t i = 1; i <= count; ++i)
+                {
+                    auto nextIndex = (std::distance(auras.begin(), it) + i) % count;
+                    if (auras[nextIndex])
+                    {
+                        pAI->m_spells.paladin.pAura = auras[nextIndex];
+                        pMember->PMonsterSay("Now using aura %s", pAI->m_spells.paladin.pAura->SpellName[0].c_str());
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
 bool ChatHandler::HandlePartyBotUnequipCommand(char* args)
 {
     Player* pTarget = GetSelectedPlayer();

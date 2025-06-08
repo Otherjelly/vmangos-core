@@ -82,6 +82,7 @@ public:
     }
 
     virtual void OnPacketReceived(WorldPacket const* packet) override;
+    virtual void OnPacketSentFromClient(WorldPacket const* packet);
     void SendBattlefieldPortPacket();
     void SendBattlemasterJoinPacket(uint8 battlegroundId);
     void SendAreaTriggerPacket(uint32 areaTriggerId);
@@ -141,6 +142,7 @@ public:
     int32 GetIncomingdamage(Unit const* pTarget) const;
     bool AreOthersOnSameTarget(ObjectGuid guid, bool checkMelee = true, bool checkSpells = true) const;
 
+    bool DoNotRotate();
     bool FaceObject(WorldObject const* pObject);
     SpellCastResult DoCastSpell(Unit* pTarget, SpellEntry const* pSpellEntry);
     virtual bool CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry, bool reapplyAura = false, bool checkAuraCaster = false, bool ignoreStacks = false) const;
@@ -663,6 +665,7 @@ public:
     bool m_receivedBgInvite = false;
     uint8 m_visualHonorRank = 0;
     CombatBotRoles m_role = ROLE_INVALID;
+    ShortTimeTracker m_clientMovementTimer;
 
     struct RecentSpell
     {

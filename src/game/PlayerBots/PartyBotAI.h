@@ -99,8 +99,10 @@ public:
     Unit* GetDistancingTarget(Unit* pEnemy);
     bool RunAwayFromTarget(Unit* pEnemy, float distance);
     bool RunAwayFromTarget(Unit* pEnemy);
+    bool DoNotMove();
     void MoveChase(Unit* target, float dist = 0.0f, float angle = 0.0f);
     void MoveFollow(Unit* pLeader);
+    void MovePoint(float x, float y, float z, Unit* pVictim = nullptr);
     void MovePointNear(float x, float y, float z, Unit* pVictim = nullptr);
     bool StayBehind(Unit* pVictim);
     bool CrowdControlMarkedTargets();

@@ -3446,9 +3446,14 @@ bool CombatBotBaseAI::CanTryToCastSpell(Unit const* pTarget, SpellEntry const* p
     return true;
 }
 
+bool CombatBotBaseAI::DoNotRotate()
+{
+    return !m_clientMovementTimer.Passed();
+}
+
 bool CombatBotBaseAI::FaceObject(WorldObject const* pObject)
 {
-    if (true)
+    if (!DoNotRotate())
     {
         float arc = me->IsMoving() ? M_PI_F : M_PI_F / 4;
         if (!me->HasInArc(pObject, arc))
@@ -4111,6 +4116,25 @@ void CombatBotBaseAI::OnPacketReceived(WorldPacket const* packet)
             me->GetSession()->QueuePacket(std::move(data));
             return;
         }
+    }
+}
+
+void CombatBotBaseAI::OnPacketSentFromClient(WorldPacket const* packet)
+{
+    if (!me)
+        return;
+
+    uint16 opcode = packet->GetOpcode();
+    if (opcode != MSG_MOVE_STOP && opcode != MSG_MOVE_FALL_LAND)
+    {
+        if (me->GetMotionMaster()->GetCurrentMovementGeneratorType() != IDLE_MOTION_TYPE)
+        {
+            me->StopMoving();
+            me->GetMotionMaster()->Clear(false, true);
+            me->GetMotionMaster()->MoveIdle();
+        }
+        if (me->IsInCombat())
+            m_clientMovementTimer.Reset(500);
     }
 }
 

@@ -117,6 +117,8 @@ ChatCommand * ChatHandler::getCommandTable()
         { "unstay",     SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotUnstayCommand,      "", nullptr },
         { "pause",      SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotPauseCommand,       "", nullptr },
         { "unpause",    SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotUnpauseCommand,     "", nullptr },
+        { "changeseal", SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotChangeSealCommand,  "", nullptr },
+        { "changeaura", SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotChangeAuraCommand,  "", nullptr },
         { "unequip",    SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotUnequipCommand,     "", nullptr },
         { "remove",     SEC_ADMINISTRATOR,      false, &ChatHandler::HandlePartyBotRemoveCommand,      "", nullptr },
         { nullptr,      0,                      false, nullptr,                                        "", nullptr },

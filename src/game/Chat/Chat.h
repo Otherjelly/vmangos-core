@@ -294,7 +294,9 @@ class ChatHandler
         bool HandlePartyBotUnstayCommand(char* args);
         bool HandlePartyBotPauseCommand(char* args);
         bool HandlePartyBotUnpauseCommand(char * args);
-        bool HandlePartyBotUnequipCommand(char * args);
+        bool HandlePartyBotChangeSealCommand(char* args);
+        bool HandlePartyBotChangeAuraCommand(char* args);
+        bool HandlePartyBotUnequipCommand(char* args);
         bool HandlePartyBotRemoveCommand(char * args);
         bool HandleBattleBotAddCommand(char* args, uint8 bg);
         bool HandleBattleBotAddAlteracCommand(char* args);
