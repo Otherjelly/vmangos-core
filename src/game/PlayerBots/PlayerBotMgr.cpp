@@ -2195,7 +2195,7 @@ bool ChatHandler::HandlePartyBotChangeSealCommand(char* args)
                     if (seals[nextIndex])
                     {
                         pAI->m_spells.paladin.pSeal = seals[nextIndex];
-                        pMember->PMonsterSay("Now using seal %s", pAI->m_spells.paladin.pSeal->SpellName[0].c_str());
+                        pMember->PMonsterSay("Now using %s", pAI->m_spells.paladin.pSeal->SpellName[0].c_str());
                         break;
                     }
                 }
@@ -2238,7 +2238,7 @@ bool ChatHandler::HandlePartyBotChangeAuraCommand(char* args)
                     if (auras[nextIndex])
                     {
                         pAI->m_spells.paladin.pAura = auras[nextIndex];
-                        pMember->PMonsterSay("Now using aura %s", pAI->m_spells.paladin.pAura->SpellName[0].c_str());
+                        pMember->PMonsterSay("Now using %s", pAI->m_spells.paladin.pAura->SpellName[0].c_str());
                         break;
                     }
                 }

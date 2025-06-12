@@ -125,6 +125,7 @@ public:
     bool IsValidSelectBuffTarget(Unit const* pTarget, SpellEntry const* pSpellEntry, bool rebuff = false) const;
     bool IsValidHealTarget(Unit const* pTarget, float healthPercent = 100.0f) const;
     bool IsValidHostileTarget(Unit const* pTarget) const;
+    bool IsValidDispelFriendlyTarget(Unit const* pTarget, SpellEntry const* pSpellEntry) const;
     bool IsValidDispelTarget(Unit const* pTarget, SpellEntry const* pSpellEntry) const;
     bool FindAndPreHealTarget();
     bool FindAndHealInjuredAlly(float selfHealPercent = 100.0f, float groupHealPercent = 100.0f);
@@ -149,6 +150,8 @@ public:
     bool IsWearingShield(Player* pPlayer) const;
     bool IsInDuel() const;
     CombatBotRoles GetRole() const;
+    CombatBotRoles GetRoleByMember(Player* pMember) const;
+    CombatBotRoles GetRoleByPet(Player* pMember, Pet* pPet) const;
 
     void EquipOrUseNewItem();
     void AddItemToInventory(uint32 itemId, uint32 count = 1);
@@ -401,6 +404,7 @@ public:
         {
             SpellEntry const* pTrueshotAura;
             SpellEntry const* pAspectOfTheCheetah;
+            SpellEntry const* pAspectOfThePack;
             SpellEntry const* pAspectOfTheMonkey;
             SpellEntry const* pAspectOfTheHawk;
             SpellEntry const* pSerpentSting;

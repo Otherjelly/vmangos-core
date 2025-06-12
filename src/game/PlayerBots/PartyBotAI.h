@@ -58,8 +58,6 @@ public:
     void AddToPlayerGroup();
 
     bool IsTargetDeathWithinSeconds(Unit* pTarget, float seconds) const;
-    CombatBotRoles GetRoleByMember(Player* pMember) const;
-    CombatBotRoles PartyBotAI::GetRoleByPet(Player* pMember, Pet* pPet) const;
     template <typename Func>
     void ForEachPlayerInGroup(bool mustBeAlive, Func&& func) const;
     template <typename Func>

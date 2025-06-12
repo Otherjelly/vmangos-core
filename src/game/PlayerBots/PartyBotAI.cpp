@@ -371,29 +371,6 @@ bool PartyBotAI::IsTargetDeathWithinSeconds(Unit* pTarget, float seconds) const
     return targetHealth < totalDamage;
 }
 
-CombatBotRoles PartyBotAI::GetRoleByMember(Player* pMember) const
-{
-    if (pMember->AI())
-    {
-        if (PartyBotAI* pAI = dynamic_cast<PartyBotAI*>(pMember->AI()))
-            return pAI->GetRole();
-    }
-
-    // TODO: Allow roles to be assigned to non-bots
-    return GuessRole(pMember);
-}
-
-CombatBotRoles PartyBotAI::GetRoleByPet(Player* pMember, Pet* pPet) const
-{
-    if (pMember->GetClass() == CLASS_HUNTER)
-        return ROLE_TANK;
-    if (pMember->GetClass() == CLASS_WARLOCK)
-        return ROLE_RANGE_DPS;
-
-    // TODO: Allow roles to be assigned to pets, and better defaults (e.g. imp is ranged)
-    return ROLE_MELEE_DPS;
-}
-
 template <typename Func>
 void PartyBotAI::ForEachPlayerInGroup(bool mustBeAlive, Func&& func) const
 {
@@ -3617,10 +3594,17 @@ void PartyBotAI::UpdateInCombatAI_Warlock()
             }
         }
 
-        if (m_spells.warlock.pConflagrate && CanTryToCastSpell(pVictim, m_spells.warlock.pConflagrate))
+        if (m_spells.warlock.pConflagrate && m_spells.warlock.pImmolate)
         {
-            if (DoCastSpell(pVictim, m_spells.warlock.pConflagrate) == SPELL_CAST_OK)
-                return;
+            // TODO: Early vs late vs finnisher
+            if (SpellAuraHolder* pAuraHolder = pVictim->GetSpellAuraHolder(m_spells.warlock.pImmolate->Id, me->GetObjectGuid()))
+            {
+                if (pAuraHolder->GetAuraDuration() < 5000)
+                {
+                    if (CanTryToCastSpell(pVictim, m_spells.warlock.pConflagrate) && DoCastSpell(pVictim, m_spells.warlock.pConflagrate) == SPELL_CAST_OK)
+                        return;
+                }
+            }
         }
 
         if (m_spells.warlock.pSiphonLife &&

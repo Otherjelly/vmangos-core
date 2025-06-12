@@ -208,6 +208,8 @@ void CombatBotBaseAI::PopulateSpellData()
             uint32 newRank = pSpellEntry->GetRank();
             if (newRank)
                 return newRank > pOldSpell->GetRank();
+            else if (pSpellEntry->baseLevel)
+                return pSpellEntry->baseLevel > pOldSpell->baseLevel;
 
             return pSpellEntry->Id > pOldSpell->Id;
         };
@@ -631,6 +633,11 @@ void CombatBotBaseAI::PopulateSpellData()
                 {
                     if (IsHigherRankSpell(m_spells.hunter.pAspectOfTheCheetah))
                         m_spells.hunter.pAspectOfTheCheetah = pSpellEntry;
+                }
+                else if (pSpellEntry->SpellName[0].find("Aspect of the Pack") != std::string::npos)
+                {
+                    if (IsHigherRankSpell(m_spells.hunter.pAspectOfThePack))
+                        m_spells.hunter.pAspectOfThePack = pSpellEntry;
                 }
                 else if (pSpellEntry->SpellName[0].find("Aspect of the Hawk") != std::string::npos)
                 {
@@ -2601,6 +2608,18 @@ bool CombatBotBaseAI::IsValidHostileTarget(Unit const* pTarget) const
            pTarget->GetTransport() == me->GetTransport();
 }
 
+bool CombatBotBaseAI::IsValidDispelFriendlyTarget(Unit const* pTarget, SpellEntry const* pSpellEntry) const
+{
+    // TODO: General case of not burning mana dispelling things that are of little consequence.
+    if (me->IsInCombat() && me->GetMapId() > 1 && !me->GetMap()->IsBattleGround() && me->GetLevel() < 60)
+    {
+        if (!pTarget->HasUnitState(UNIT_STATE_CAN_NOT_MOVE | UNIT_STATE_CAN_NOT_REACT_OR_LOST_CONTROL) && !pTarget->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SILENCED))
+            return false;
+    }
+
+    return true;
+}
+
 bool CombatBotBaseAI::IsValidDispelTarget(Unit const* pTarget, SpellEntry const* pSpellEntry) const
 {
     uint32 dispelMask = 0;
@@ -2808,28 +2827,50 @@ Unit* CombatBotBaseAI::SelectRebuffTarget(SpellEntry const* pSpellEntry) const
 
 Unit* CombatBotBaseAI::SelectDispelTarget(SpellEntry const* pSpellEntry) const
 {
+    auto isValidDispelCandidate = [&](Player* pMember, Unit* pUnit) -> bool {
+        return pUnit &&
+               (me->IsValidHelpfulTarget(pUnit) || pUnit->GetCharmerOrOwnerOrSelf() != pMember) &&
+               IsValidDispelTarget(pUnit, pSpellEntry) &&
+               IsValidDispelFriendlyTarget(pUnit, pSpellEntry) &&
+               me->IsWithinLOSInMap(pUnit) &&
+               me->IsWithinDist(pUnit, 30.0f);
+    };
+
+    if (isValidDispelCandidate(me, me) && !me->IsGameMaster())
+        return me;
+
     Group* pGroup = me->GetGroup();
     if (pGroup)
     {
+        // Tanks 1st
         for (GroupReference* itr = pGroup->GetFirstMember(); itr != nullptr; itr = itr->next())
         {
             if (Player* pMember = itr->getSource())
             {
-                if ((me->IsValidHelpfulTarget(pMember) || pMember->IsCharmed()) &&
-                   !pMember->IsGameMaster() &&
-                    IsValidDispelTarget(pMember, pSpellEntry) &&
-                    me->IsWithinLOSInMap(pMember) &&
-                    me->IsWithinDist(pMember, 30.0f))
+                if (pMember != me && GetRoleByMember(pMember) == ROLE_TANK && isValidDispelCandidate(pMember, pMember) && !pMember->IsGameMaster())
                     return pMember;
 
-                    if (Pet* pPet = pMember->GetPet())
-                    {
-                        if (me->IsValidHelpfulTarget(pPet) &&
-                            IsValidDispelTarget(pPet, pSpellEntry) &&
-                            me->IsWithinLOSInMap(pPet) &&
-                            me->IsWithinDist(pPet, 30.0f))
-                            return pPet;
-                    }
+                if (Pet* pPet = pMember->GetPet())
+                {
+                    if (GetRoleByPet(pMember, pPet) == ROLE_TANK && isValidDispelCandidate(pMember, pPet))
+                        return pPet;
+                }
+            }
+        }
+
+        // Others
+        for (GroupReference* itr = pGroup->GetFirstMember(); itr != nullptr; itr = itr->next())
+        {
+            if (Player* pMember = itr->getSource())
+            {
+                if (pMember != me && GetRoleByMember(pMember) != ROLE_TANK && isValidDispelCandidate(pMember, pMember) && !pMember->IsGameMaster())
+                    return pMember;
+
+                if (Pet* pPet = pMember->GetPet())
+                {
+                    if (GetRoleByPet(pMember, pPet) != ROLE_TANK && isValidDispelCandidate(pMember, pPet))
+                        return pPet;
+                }
             }
         }
     }
@@ -3940,6 +3981,29 @@ CombatBotRoles CombatBotBaseAI::GetRole() const
     }
 
     return m_role;
+}
+
+CombatBotRoles CombatBotBaseAI::GetRoleByMember(Player* pMember) const
+{
+    if (pMember->AI())
+    {
+        if (CombatBotBaseAI* pAI = dynamic_cast<CombatBotBaseAI*>(pMember->AI()))
+            return pAI->GetRole();
+    }
+
+    // TODO: Allow roles to be assigned to non-bots
+    return GuessRole(pMember);
+}
+
+CombatBotRoles CombatBotBaseAI::GetRoleByPet(Player* pMember, Pet* pPet) const
+{
+    if (pMember->GetClass() == CLASS_HUNTER)
+        return ROLE_TANK;
+    if (pMember->GetClass() == CLASS_WARLOCK)
+        return ROLE_RANGE_DPS;
+
+    // TODO: Allow roles to be assigned to pets, and better defaults (e.g. imp is ranged)
+    return ROLE_MELEE_DPS;
 }
 
 void CombatBotBaseAI::SendBattlefieldPortPacket()
