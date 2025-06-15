@@ -99,6 +99,7 @@ public:
     void EquipPremadeGearTemplate();
     void EquipRandomGearInEmptySlots();
     void AutoEquipGear(uint32 option);
+    uint32 CombatBotBaseAI::GetMountSpellId() const;
     void LearnRandomTalents();
 
     template <typename Func>
@@ -160,10 +161,12 @@ public:
     uint32 CountInventoryItem(uint32 entry);
     uint32 CountInventoryItem(SpellEntry const* spellEntry);
     Item* GetInventoryItem(uint32 entry);
-    Item* GetInventoryItem(SpellEntry const* spellEntry);
+    Item* GetInventoryItem(SpellEntry const* spellEntry);   // BySpellEffectItemType
+    Item* GetInventoryItemForMount();
     bool CanTryToCastItemUseSpell(Item* pItem);
     bool CanTryToCastItemUseSpell(Item* pItem, Unit* pTarget);
     void UseConsumable(Item* pItem, Unit* pTarget);
+    void UseItem(Item* pItem, Unit* pTarget);
     uint8 GetHighestHonorRankFromEquippedItems() const;
     void UpdateVisualHonorRankBasedOnItems();
 
@@ -312,6 +315,7 @@ public:
     }
 
     SpellEntry const* m_resurrectionSpell = nullptr;
+    SpellEntry const* m_mountSpell = nullptr; // Full
     SpellEntry const* m_tauntSpell = nullptr;   // Full
     std::vector<SpellEntry const*> m_spellListTaunt;    // Full & temporary
     std::set<SpellEntry const*, HealAuraCompare> m_spellListPeriodicHeal;
@@ -424,6 +428,7 @@ public:
             SpellEntry const* pTranquilizingShot;
             SpellEntry const* pRapidFire;
             SpellEntry const* pViperSting;
+            SpellEntry const* pBestialWrath;
         } hunter;
         struct
         {

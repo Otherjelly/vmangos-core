@@ -106,6 +106,27 @@ void PartyBotAI::CloneFromPlayer(Player const* pPlayer)
 
 Player* PartyBotAI::GetPartyLeader() const
 {
+    // Applied AI to self? - assume multibox
+    if (m_leaderGuid == me->GetObjectGuid())
+    {
+        // TODO: Allow assigning an effective leader guid to a bot so we can split a raid in to multiple control groups - just assume raid leader for now
+        if (me->InBattleGround())
+            return GetBotOwner();   // Assuming raid leader is random and thus possibly not part of desired control group
+
+        if (Group* pGroup = me->GetGroup())
+        {
+            if (Player* groupLeader = ObjectAccessor::FindPlayerNotInWorld(pGroup->GetLeaderGuid()))
+            {
+                return groupLeader;
+            }
+        }
+    }
+
+    return GetBotOwner();
+}
+
+Player* PartyBotAI::GetBotOwner() const
+{
     if (m_leaderGuid == me->GetObjectGuid())
         return me;
 
@@ -272,7 +293,8 @@ bool PartyBotAI::DrinkAndEat()
         return false;
 
     bool const needToEat = me->GetHealthPercent() < 100.0f;
-    bool const needToDrink = (me->GetPowerType() == POWER_MANA) && (me->GetPowerPercent(POWER_MANA) < 100.0f);
+    bool needToDrink = (me->GetPowerType() == POWER_MANA) && (me->GetPowerPercent(POWER_MANA) < 100.0f);
+    needToDrink = needToDrink && (!me->IsMounted() || me->GetPowerPercent(POWER_MANA) < 90.0f); // Avoid falling behind when leader is mounted
 
     if (!needToEat && !needToDrink)
         return false;
@@ -389,6 +411,32 @@ void PartyBotAI::ForEachPlayerInGroup(bool mustBeAlive, Func&& func) const
 }
 
 template <typename Func>
+void PartyBotAI::ForEachUnitInGroup(bool mustBeAlive, Func&& func) const
+{
+    Group* pGroup = me->GetGroup();
+    for (GroupReference* itr = pGroup->GetFirstMember(); itr != nullptr; itr = itr->next())
+    {
+        if (Player* pMember = itr->getSource())
+        {
+            if (mustBeAlive && !pMember->IsAlive())
+                continue;
+
+            if (func(pMember))
+                return;
+
+            if (Pet* pPet = pMember->GetPet())
+            {
+                if (mustBeAlive && !pPet->IsAlive())
+                    continue;
+
+                if (func(pPet))
+                    return;
+            }
+        }
+    }
+}
+
+template <typename Func>
 Player* PartyBotAI::FindFirstPlayerInGroupByCondition(bool mustBeAlive, Func&& func) const
 {
     Player* found = nullptr;
@@ -398,6 +446,23 @@ Player* PartyBotAI::FindFirstPlayerInGroupByCondition(bool mustBeAlive, Func&& f
             if (func(pMember))
             {
                 found = pMember;
+                return true; // stop iteration
+            }
+            return false; // continue
+        });
+    return found;
+}
+
+template <typename Func>
+Unit* PartyBotAI::FindFirstUnitInGroupByCondition(bool mustBeAlive, Func&& func) const
+{
+    Unit* found = nullptr;
+    ForEachUnitInGroup(mustBeAlive,
+        [&](Unit* pUnit) -> bool
+        {
+            if (func(pUnit))
+            {
+                found = pUnit;
                 return true; // stop iteration
             }
             return false; // continue
@@ -1199,7 +1264,6 @@ void PartyBotAI::UpdateAI(uint32 const diff)
     if (!m_initialized)
     {
         AddToPlayerGroup();
-        Player* pLeader = GetPartyLeader();
 
         if (m_race && m_class) // temporary character
         {
@@ -1225,23 +1289,24 @@ void PartyBotAI::UpdateAI(uint32 const diff)
                 AutoEquipGear(sWorld.getConfig(CONFIG_UINT32_PARTY_BOT_AUTO_EQUIP));
 
                 // fix client bug causing some item slots to not be visible
-                if (Player* pLeader = GetPartyLeader())
+                if (Player* pOwner = GetBotOwner())
                 {
                     me->SetVisibility(VISIBILITY_OFF);
-                    pLeader->UpdateVisibilityOf(pLeader, me);
+                    pOwner->UpdateVisibilityOf(pOwner, me);
                     me->SetVisibility(VISIBILITY_ON);
                 }
             }
             me->UpdateSkillsToMaxSkillsForLevel();
         }
-        else if (me == pLeader)
+        else if (me->GetObjectGuid() == m_leaderGuid)
         {
+            // Applied AI to self? - assume multibox
             if (m_role == ROLE_INVALID)
                 AutoAssignRole();
             m_noClient = false;
             m_noTeleport = true;
             m_noGenerateItems = true;
-            pLeader->m_stackTrackers = true;
+            me->m_stackTrackers = true;
         }
         else // loaded from db
         {
@@ -1280,8 +1345,9 @@ void PartyBotAI::UpdateAI(uint32 const diff)
         m_resetSpellData = false;
     }
 
+    Player* pOwner = GetBotOwner();
     Player* pLeader = GetPartyLeader();
-    if (!pLeader)
+    if (!pOwner || !pLeader)
     {
         botEntry->requestRemoval = true;
         return;
@@ -1499,10 +1565,19 @@ void PartyBotAI::UpdateAI(uint32 const diff)
         }
     }
 
+    // Mount if leader is mounted and we don't have a target.
     if (!me->IsInCombat())
     {
-        // Mount if leader is mounted and we don't have a target.
-        if (pLeader->IsMounted() && !me->GetVictim())
+        // Are they currently mounted?
+        bool mounted = pLeader->IsMounted();
+        // Are they currently casting a mount spell?
+        bool mounting = false;
+        if (!mounted)
+        {
+            if (Spell* pCurrentSpell = pLeader->GetCurrentSpell(CURRENT_GENERIC_SPELL))
+                mounting = pCurrentSpell->m_spellInfo->Mechanic == MECHANIC_MOUNT;
+        }
+        if ((mounted || mounting) && !me->GetVictim())
         {
             if (!me->IsMounted())
             {
@@ -1512,17 +1587,48 @@ void PartyBotAI::UpdateAI(uint32 const diff)
                     me->HasAuraType(SPELL_AURA_MOD_SHAPESHIFT))
                     me->RemoveSpellsCausingAura(SPELL_AURA_MOD_SHAPESHIFT);
 
-                auto auraList = pLeader->GetAurasByType(SPELL_AURA_MOUNTED);
-                if (!auraList.empty())
+                // Identify mount to use...
+                uint32 mountSpellId = 0;
+                // If we have a mount item, use it
+                if (me->HasSkill(SKILL_RIDING))
                 {
-                    bool oldStateCastTime = me->HasCheatOption(PLAYER_CHEAT_NO_CAST_TIME);
-                    bool oldStatePower = me->HasCheatOption(PLAYER_CHEAT_NO_POWER);
-                    me->SetCheatOption(PLAYER_CHEAT_NO_CAST_TIME, true);
-                    me->SetCheatOption(PLAYER_CHEAT_NO_POWER, true);
-                    me->CastSpell(me, (*auraList.begin())->GetId(), true);
-                    me->SetCheatOption(PLAYER_CHEAT_NO_CAST_TIME, oldStateCastTime);
-                    me->SetCheatOption(PLAYER_CHEAT_NO_POWER, oldStatePower);
-                } 
+                    if (Item* pItem = GetInventoryItemForMount())
+                        mountSpellId = pItem->GetProto()->Spells[0].SpellId;
+                }
+                // Otherwise... Palading & warlock mounts
+                if (!mountSpellId && m_mountSpell)
+                    mountSpellId = m_mountSpell->Id;
+                // Otherwise... Default mount
+                if (!mountSpellId && !m_noGenerateItems)
+                    mountSpellId = GetMountSpellId();
+                // Otherwise... Leader's mount
+                if (!mountSpellId && !m_noGenerateItems)
+                {
+                    const auto& auraList = pLeader->GetAurasByType(SPELL_AURA_MOUNTED);
+                    if (!auraList.empty())
+                        mountSpellId = (*auraList.begin())->GetId();
+                }
+
+                if (mountSpellId)
+                {
+                    if (mounted)
+                    {
+                        // Quick mount if leader is already mounted
+                        bool oldStateCastTime = me->HasCheatOption(PLAYER_CHEAT_NO_CAST_TIME);
+                        bool oldStatePower = me->HasCheatOption(PLAYER_CHEAT_NO_POWER);
+                        me->SetCheatOption(PLAYER_CHEAT_NO_CAST_TIME, true);
+                        me->SetCheatOption(PLAYER_CHEAT_NO_POWER, true);
+                        me->CastSpell(me, mountSpellId, true);
+                        me->SetCheatOption(PLAYER_CHEAT_NO_CAST_TIME, oldStateCastTime);
+                        me->SetCheatOption(PLAYER_CHEAT_NO_POWER, oldStatePower);
+                    }
+                    else
+                    {
+                        // Apply cast time if the leader is also currently casting -  Consider DrinkAnkEat when spell consumes mana
+                        me->CastSpell(me, mountSpellId, false);
+                    }
+                    return;
+                }
             }
         }
         else if (me->IsMounted())
@@ -1533,7 +1639,7 @@ void PartyBotAI::UpdateAI(uint32 const diff)
     {
         if (!pVictim)
         {
-            if (me->GetMotionMaster()->GetCurrentMovementGeneratorType() != FOLLOW_MOTION_TYPE && me != pLeader)
+            if (me->GetMotionMaster()->GetCurrentMovementGeneratorType() != FOLLOW_MOTION_TYPE && m_noClient)
                 MoveFollow(pLeader);
         }
         else
@@ -2264,18 +2370,36 @@ void PartyBotAI::UpdateInCombatAI_Shaman()
 
 void PartyBotAI::UpdateOutOfCombatAI_Hunter()
 {
-    if (m_spells.hunter.pAspectOfTheHawk &&
+    // TODO: Check more things.. e.g. leader has selected a hostile target in range
+    if (m_spells.hunter.pAspectOfThePack && !me->GetVictim())
+    {
+        if (CanTryToCastSpell(me, m_spells.hunter.pAspectOfThePack) && DoCastSpell(me, m_spells.hunter.pAspectOfThePack) == SPELL_CAST_OK)
+        {
+            m_buffTimer.Reset(PB_BUFFING_INTERVAL);
+            me->ClearTarget();
+            return;
+        }
+    }
+    else if (m_spells.hunter.pAspectOfTheHawk &&
         CanTryToCastSpell(me, m_spells.hunter.pAspectOfTheHawk))
     {
         if (DoCastSpell(me, m_spells.hunter.pAspectOfTheHawk) == SPELL_CAST_OK)
+        {
+            m_buffTimer.Reset(PB_BUFFING_INTERVAL);
+            me->ClearTarget();
             return;
+        }
     }
 
-    //if (m_spells.hunter.pTrueshotAura && CanTryToCastSpell(me, m_spells.hunter.pTrueshotAura))
-    //{
-    //    if (DoCastSpell(me, m_spells.hunter.pTrueshotAura) == SPELL_CAST_OK)
-    //        return;
-    //}
+    if (m_spells.hunter.pTrueshotAura && CanTryToCastSpell(me, m_spells.hunter.pTrueshotAura))
+    {
+        if (DoCastSpell(me, m_spells.hunter.pTrueshotAura) == SPELL_CAST_OK)
+        {
+            m_buffTimer.Reset(PB_BUFFING_INTERVAL);
+            me->ClearTarget();
+            return;
+        }
+    }
 
     if (Unit* pVictim = me->GetVictim())
     {
@@ -2328,6 +2452,12 @@ void PartyBotAI::UpdateInCombatPetAI()
 
 void PartyBotAI::UpdateInCombatAI_Hunter()
 {
+    if (m_spells.hunter.pAspectOfThePack)
+    {
+        if (SpellAuraHolder* pAuraHolder = me->GetSpellAuraHolder(m_spells.hunter.pAspectOfThePack->Id, me->GetObjectGuid()))
+            me->RemoveAurasDueToSpellByCancel(m_spells.hunter.pAspectOfThePack->Id);
+    }
+
     if (Unit* pVictim = me->GetVictim())
     {
         if (me->GetMotionMaster()->GetCurrentMovementGeneratorType() == IDLE_MOTION_TYPE
@@ -2339,6 +2469,12 @@ void PartyBotAI::UpdateInCombatAI_Hunter()
         if (m_spells.hunter.pHuntersMark && !IsTargetDeathWithinSeconds(pVictim, 10.0f) && CanTryToCastSpell(pVictim, m_spells.hunter.pHuntersMark))
         {
             if (DoCastSpell(pVictim, m_spells.hunter.pHuntersMark) == SPELL_CAST_OK)
+                return;
+        }
+
+        if (me->GetPet() && me->GetPet()->IsAlive() && m_spells.hunter.pBestialWrath && CanTryToCastSpell(pVictim, m_spells.hunter.pBestialWrath))
+        {
+            if (DoCastSpell(pVictim, m_spells.hunter.pBestialWrath) == SPELL_CAST_OK)
                 return;
         }
 
@@ -2473,7 +2609,7 @@ void PartyBotAI::UpdateInCombatAI_Hunter()
             }
         }
 
-        // Don't both getting distance if they're about to die, unless there's more of em
+        // Don't bother getting distance if they're about to die, unless there's more of em
         if (GetRole() != ROLE_MELEE_DPS && me->CanReachWithMeleeAutoAttack(pVictim) && IsTargetDeathWithinSeconds(pVictim, 3.0f) && me->GetEnemyCountInRadiusAround(me, 8.0f) < 2)
             return;
 
@@ -2579,7 +2715,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Mage()
         }
     }
 
-    if (!me->IsMoving() && me->GetPowerPercent(POWER_MANA) == 100.0f)
+    if (!me->IsMoving() && (me->GetPowerPercent(POWER_MANA) == 100.0f || me->GetRestType() != REST_TYPE_NO))
     {
         if (m_noGenerateItems && m_spells.mage.pConjureWater && CanTryToCastSpell(me, m_spells.mage.pConjureWater) && CountInventoryItem(m_spells.mage.pConjureWater) < 40)
         {
@@ -3786,6 +3922,12 @@ void PartyBotAI::UpdateInCombatAI_Warrior()
 {
     if (Unit* pVictim = me->GetVictim())
     {
+        if (m_spells.warrior.pBattleShout && CanTryToCastSpell(me, m_spells.warrior.pBattleShout))
+        {
+            if (DoCastSpell(me, m_spells.warrior.pBattleShout) == SPELL_CAST_OK)
+                return;
+        }
+
         if (pVictim->IsNonMeleeSpellCasted(false, false, true))
         {
             if (m_spells.warrior.pPummel &&

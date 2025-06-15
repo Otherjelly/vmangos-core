@@ -61,7 +61,11 @@ public:
     template <typename Func>
     void ForEachPlayerInGroup(bool mustBeAlive, Func&& func) const;
     template <typename Func>
+    void ForEachUnitInGroup(bool mustBeAlive, Func&& func) const;
+    template <typename Func>
     Player* FindFirstPlayerInGroupByCondition(bool mustBeAlive, Func&& func) const;
+    template <typename Func>
+    Unit* FindFirstUnitInGroupByCondition(bool mustBeAlive, Func&& func) const;
     template <typename Func>
     std::set<Player*> FindAllPlayersInGroupByCondition(bool mustBeAlive, Func&& func) const;
     std::set<Player*> FindAllPlayersInGroup(bool mustBeAlive) const;
@@ -77,6 +81,7 @@ public:
     bool CheckThreatOK(Unit const* pTarget, SpellEntry const* pSpellEntry = nullptr) const;
     bool CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry, bool ignoreAppliesAuraCheck = false, bool checkAuraCaster = false, bool ignoreStacks = false) const final;
     Player* GetPartyLeader() const;
+    Player* GetBotOwner() const;
     bool AttackStart(Unit* pVictim);
     Unit* SelectAttackTarget(Player* pLeader) const;
     Unit* SelectPartyAttackTarget() const;

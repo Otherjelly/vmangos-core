@@ -52,6 +52,30 @@ enum CombatBotSpells
     PET_RAPTOR  = 3254,
     PET_TURTLE  = 3461,
     PET_HYENA   = 4127,
+
+    CB_SPELL_MOUNT_40_HUMAN = 470,
+    CB_SPELL_MOUNT_40_NELF = 10787,
+    CB_SPELL_MOUNT_40_DWARF = 6896,
+    CB_SPELL_MOUNT_40_GNOME = 17456,
+    CB_SPELL_MOUNT_40_TROLL = 10795,
+    CB_SPELL_MOUNT_40_ORC = 581,
+    CB_SPELL_MOUNT_40_TAUREN = 18363,
+    CB_SPELL_MOUNT_40_UNDEAD = 8980,
+
+    CB_SPELL_MOUNT_60_HUMAN = 22717,
+    CB_SPELL_MOUNT_60_NELF = 22723,
+    CB_SPELL_MOUNT_60_DWARF = 22720,
+    CB_SPELL_MOUNT_60_GNOME = 22719,
+    CB_SPELL_MOUNT_60_TROLL = 22721,
+    CB_SPELL_MOUNT_60_ORC = 22724,
+    CB_SPELL_MOUNT_60_TAUREN = 22718,
+    CB_SPELL_MOUNT_60_UNDEAD = 22722,
+
+    CB_SPELL_MOUNT_40_PALADIN = 13819,
+    CB_SPELL_MOUNT_60_PALADIN = 23214,
+
+    CB_SPELL_MOUNT_40_WARLOCK = 5784,
+    CB_SPELL_MOUNT_60_WARLOCK = 23161,
 };
 
 CombatBotRoles CombatBotBaseAI::GuessRole(Player* pPlayer) const
@@ -218,7 +242,17 @@ void CombatBotBaseAI::PopulateSpellData()
         {
             case CLASS_PALADIN:
             {
-                if (pSpellEntry->SpellName[0].find("Seal of Righteousness") != std::string::npos)
+                if (pSpellEntry->SpellName[0].find("Summon Warhorse") != std::string::npos)
+                {
+                    if (IsHigherRankSpell(m_mountSpell))
+                        m_mountSpell = pSpellEntry;
+                }
+                else if (pSpellEntry->SpellName[0].find("Summon Charger") != std::string::npos)
+                {
+                    if (IsHigherRankSpell(m_mountSpell))
+                        m_mountSpell = pSpellEntry;
+                }
+                else if (pSpellEntry->SpellName[0].find("Seal of Righteousness") != std::string::npos)
                 {
                     if (IsHigherRankSpell(m_spells.paladin.pSealOfRighteousness))
                         m_spells.paladin.pSealOfRighteousness = pSpellEntry;
@@ -733,6 +767,11 @@ void CombatBotBaseAI::PopulateSpellData()
                 {
                     if (IsHigherRankSpell(m_spells.hunter.pViperSting))
                         m_spells.hunter.pViperSting = pSpellEntry;
+                }
+                else if (pSpellEntry->SpellName[0].find("Bestial Wrath") != std::string::npos)
+                {
+                    if (IsHigherRankSpell(m_spells.hunter.pBestialWrath))
+                        m_spells.hunter.pBestialWrath = pSpellEntry;
                 }
                 break;
             }
@@ -3399,6 +3438,66 @@ void CombatBotBaseAI::AutoEquipGear(uint32 option)
     UpdateVisualHonorRankBasedOnItems();
 }
 
+uint32 CombatBotBaseAI::GetMountSpellId() const
+{
+    if (me->GetLevel() >= 60)
+    {
+            if (me->GetClass() == CLASS_PALADIN)
+                return CB_SPELL_MOUNT_60_PALADIN;
+            if (me->GetClass() == CLASS_WARLOCK)
+                return CB_SPELL_MOUNT_60_WARLOCK;
+
+            switch (me->GetRace())
+            {
+                case RACE_HUMAN:
+                    return CB_SPELL_MOUNT_60_HUMAN;
+                case RACE_NIGHTELF:
+                    return CB_SPELL_MOUNT_60_NELF;
+                case RACE_DWARF:
+                    return CB_SPELL_MOUNT_60_DWARF;
+                case RACE_GNOME:
+                    return CB_SPELL_MOUNT_60_GNOME;
+                case RACE_TROLL:
+                    return CB_SPELL_MOUNT_60_TROLL;
+                case RACE_ORC:
+                    return CB_SPELL_MOUNT_60_ORC;
+                case RACE_TAUREN:
+                    return CB_SPELL_MOUNT_60_TAUREN;
+                case RACE_UNDEAD:
+                    return CB_SPELL_MOUNT_60_UNDEAD;
+            }
+    }
+    else if (me->GetLevel() >= 40)
+    {
+            if (me->GetClass() == CLASS_PALADIN)
+                return CB_SPELL_MOUNT_40_PALADIN;
+                if (me->GetClass() == CLASS_WARLOCK)
+            return CB_SPELL_MOUNT_40_WARLOCK;
+
+            switch (me->GetRace())
+            {
+                case RACE_HUMAN:
+                    return CB_SPELL_MOUNT_40_HUMAN;
+                case RACE_NIGHTELF:
+                    return CB_SPELL_MOUNT_40_NELF;
+                case RACE_DWARF:
+                    return CB_SPELL_MOUNT_40_DWARF;
+                case RACE_GNOME:
+                    return CB_SPELL_MOUNT_40_GNOME;
+                case RACE_TROLL:
+                    return CB_SPELL_MOUNT_40_TROLL;
+                case RACE_ORC:
+                    return CB_SPELL_MOUNT_40_ORC;
+                case RACE_TAUREN:
+                    return CB_SPELL_MOUNT_40_TAUREN;
+                case RACE_UNDEAD:
+                    return CB_SPELL_MOUNT_40_UNDEAD;
+            }
+    }
+
+    return 0;
+}
+
 bool CombatBotBaseAI::CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry, bool ignoreAppliesAuraCheck, bool checkAuraCaster, bool ignoreStacks) const
 {
     if (!me->IsSpellReady(pSpellEntry->Id))
@@ -3665,13 +3764,13 @@ void CombatBotBaseAI::EquipOrUseNewItem()
 }
 
 template <typename Func>
-void ForEachInventoryItem(Player* pPlayer, uint32 entry, Func&& func)
+void ForEachInventoryItem(Player* pPlayer, Func&& func)
 {
     for (int i = INVENTORY_SLOT_ITEM_START; i < INVENTORY_SLOT_ITEM_END; ++i)
     {
         if (Item* pItem = pPlayer->GetItemByPos(INVENTORY_SLOT_BAG_0, i))
         {
-            if (pItem->GetEntry() == entry && func(pItem))
+            if (func(pItem))
                 return;
         }
     }
@@ -3684,7 +3783,7 @@ void ForEachInventoryItem(Player* pPlayer, uint32 entry, Func&& func)
             {
                 if (Item* pItem = pBag->GetItemByPos(j))
                 {
-                    if (pItem->GetEntry() == entry && func(pItem))
+                    if (func(pItem))
                         return;
                 }
             }
@@ -3693,31 +3792,21 @@ void ForEachInventoryItem(Player* pPlayer, uint32 entry, Func&& func)
 }
 
 template <typename Func>
+void ForEachInventoryItem(Player* pPlayer, uint32 entry, Func&& func)
+{
+    ForEachInventoryItem(pPlayer, [entry, &func](Item* pItem)
+    {
+        return pItem->GetEntry() == entry && func(pItem);
+    });
+}
+
+template <typename Func>
 void ForEachInventoryItem(Player* pPlayer, std::set<uint32> const& entries, Func&& func)
 {
-    for (int i = INVENTORY_SLOT_ITEM_START; i < INVENTORY_SLOT_ITEM_END; ++i)
+    ForEachInventoryItem(pPlayer, [&entries, &func](Item* pItem)
     {
-        if (Item* pItem = pPlayer->GetItemByPos(INVENTORY_SLOT_BAG_0, i))
-        {
-            if (entries.count(pItem->GetEntry()) && func(pItem))
-                return;
-        }
-    }
-
-    for (int i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; ++i)
-    {
-        if (Bag* pBag = static_cast<Bag*>(pPlayer->GetItemByPos(INVENTORY_SLOT_BAG_0, i)))
-        {
-            for (uint32 j = 0; j < pBag->GetBagSize(); ++j)
-            {
-                if (Item* pItem = pBag->GetItemByPos(j))
-                {
-                    if (entries.count(pItem->GetEntry()) && func(pItem))
-                        return;
-                }
-            }
-        }
-    }
+        return entries.count(pItem->GetEntry()) && func(pItem);
+    });
 }
 
 static const std::set<uint32> HEALTH_STONE_ENTRIES = {
@@ -3731,12 +3820,11 @@ static const std::set<uint32> HEALTH_STONE_ENTRIES = {
 Item* CombatBotBaseAI::GetHealthStone()
 {
     Item* result = nullptr;
-    ForEachInventoryItem(me, HEALTH_STONE_ENTRIES,
-        [&result](Item* pItem)
-        {
-            result = pItem;
-            return true; // stop at first match
-        });
+    ForEachInventoryItem(me, HEALTH_STONE_ENTRIES, [&result](Item* pItem)
+    {
+        result = pItem;
+        return true; // stop at first match
+    });
     return result;
 }
 
@@ -3784,6 +3872,22 @@ Item* CombatBotBaseAI::GetInventoryItem(uint32 entry)
 Item* CombatBotBaseAI::GetInventoryItem(SpellEntry const* spellEntry)
 {
     return GetInventoryItem(spellEntry->EffectItemType[0]);
+}
+
+Item* CombatBotBaseAI::GetInventoryItemForMount()
+{
+    Item* result = nullptr;
+    ForEachInventoryItem(me, [&result](Item* pItem)
+    {
+        ItemPrototype const* proto = pItem->GetProto();
+        if (proto && proto->RequiredSkill == SKILL_RIDING && pItem->IsSoulBound())
+        {
+            result = pItem;
+            return true; // stop iteration at first match
+        }
+        return false;
+    });
+    return result;
 }
 
 bool CombatBotBaseAI::CanTryToCastItemUseSpell(Item* pItem)
@@ -3837,6 +3941,22 @@ void CombatBotBaseAI::UseConsumable(Item* pItem, Unit* pTarget)
         if (pItem->GetProto()->Class != ITEM_CLASS_CONSUMABLE)
         {
             sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "%s using %d non-consumable class %d", me->GetName(), pItem->GetEntry(), pItem->GetProto()->Class);
+        }
+
+        SpellCastTargets targets;
+        targets.setUnitTarget(pTarget);
+        me->CastItemUseSpell(pItem, targets);
+    }
+}
+
+void CombatBotBaseAI::UseItem(Item* pItem, Unit* pTarget)
+{
+    if (pItem)
+    {
+        // Mana Agate is ITEM_FLAG_CONJURED only (not ITEM_FLAG_PLAYERCAST) - ditch checks replace UseConsumable?
+        if (!(pItem->GetProto()->Flags & ITEM_FLAG_PLAYERCAST))
+        {
+            sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "%s using %d non-playercast item %s", me->GetName(), pItem->GetEntry(), pItem->GetProto()->Name1);
         }
 
         SpellCastTargets targets;
