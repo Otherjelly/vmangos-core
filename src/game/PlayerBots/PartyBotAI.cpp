@@ -1423,6 +1423,13 @@ void PartyBotAI::UpdateAI(uint32 const diff)
     if (GetRole() == ROLE_TANK && me->HasAura(25895))
         me->RemoveAurasDueToSpellByCancel(25895);
 
+    // When a client is attached, the bot can become flagged as moving when it's not... attempt to fix the symptom, as identifying the cause is beyond me.
+    if (!m_noClient)
+    {
+        if (m_clientMovementTimer.Passed() && me->IsMoving() && me->IsMovedByPlayer() && me->GetMotionMaster()->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE)
+            me->RemoveUnitMovementFlag(MOVEFLAG_MASK_MOVING);
+    }
+
     if (me->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL))
     {
         // Stop auto shot if no target, too close, or too much threat
@@ -1635,7 +1642,7 @@ void PartyBotAI::UpdateAI(uint32 const diff)
             me->RemoveSpellsCausingAura(SPELL_AURA_MOUNTED);
     }
 
-    if (!me->IsMoving() || me->GetMotionMaster()->GetCurrentMovementGeneratorType() == IDLE_MOTION_TYPE)
+    if (!me->IsMoving())
     {
         if (!pVictim)
         {
@@ -3894,19 +3901,6 @@ void PartyBotAI::UpdateOutOfCombatAI_Warrior()
             return;
     }
 
-    if (m_spells.warrior.pBattleShout &&
-       !me->HasAura(m_spells.warrior.pBattleShout->Id))
-    {
-        if (CanTryToCastSpell(me, m_spells.warrior.pBattleShout))
-            DoCastSpell(me, m_spells.warrior.pBattleShout);
-        else if (m_spells.warrior.pBloodrage &&
-            (me->GetPower(POWER_RAGE) < 10) &&
-            CanTryToCastSpell(me, m_spells.warrior.pBloodrage))
-        {
-            DoCastSpell(me, m_spells.warrior.pBloodrage);
-        }
-    }
-
     if (Unit* pVictim = me->GetVictim())
     {
         if (m_spells.warrior.pCharge &&
@@ -3922,6 +3916,12 @@ void PartyBotAI::UpdateInCombatAI_Warrior()
 {
     if (Unit* pVictim = me->GetVictim())
     {
+        if (m_spells.warrior.pBloodrage && me->GetPower(POWER_RAGE) < 10 && me->GetHealthPercent() > 90.0f && me->GetVictim()->GetVictim() && CanTryToCastSpell(me, m_spells.warrior.pBloodrage))
+        {
+            // Doesn't trigger GCD
+            DoCastSpell(me, m_spells.warrior.pBloodrage);
+        }
+
         if (m_spells.warrior.pBattleShout && CanTryToCastSpell(me, m_spells.warrior.pBattleShout))
         {
             if (DoCastSpell(me, m_spells.warrior.pBattleShout) == SPELL_CAST_OK)

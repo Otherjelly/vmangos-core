@@ -3593,12 +3593,12 @@ bool CombatBotBaseAI::DoNotRotate()
 
 bool CombatBotBaseAI::FaceObject(WorldObject const* pObject)
 {
-    if (!DoNotRotate())
+    if (!DoNotRotate() && me->IsStopped())  // Don't rotate if moved by movement generator
     {
         float arc = me->IsMoving() ? M_PI_F : M_PI_F / 4;
         if (!me->HasInArc(pObject, arc))
         {
-            me->SetFacingToObject(pObject);
+            me->SetFacingTo(me->GetAngle(pObject));
             return true;
         }
     }
