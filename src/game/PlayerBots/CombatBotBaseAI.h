@@ -145,9 +145,12 @@ public:
     bool AreOthersOnSameTarget(ObjectGuid guid, bool checkMelee = true, bool checkSpells = true) const;
 
     bool DoNotRotate();
+    bool FacePosition(float x, float y);
     bool FaceObject(WorldObject const* pObject);
     SpellCastResult DoCastSpell(Unit* pTarget, SpellEntry const* pSpellEntry);
-    virtual bool CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry, bool reapplyAura = false, bool checkAuraCaster = false, bool ignoreStacks = false) const;
+    SpellCastResult DoCastSpell(float x, float y, float z, SpellEntry const* pSpellEntry);
+    virtual bool CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry, bool ignoreAppliesAuraCheck = false, bool checkAuraCaster = false, bool ignoreStacks = false) const;
+    bool CanTryToCastSpell(float x, float y, float z, SpellEntry const* pSpellEntry) const;
     bool IsWearingShield(Player* pPlayer) const;
     bool IsInDuel() const;
     CombatBotRoles GetRole() const;

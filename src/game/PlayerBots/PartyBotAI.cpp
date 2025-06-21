@@ -437,6 +437,21 @@ void PartyBotAI::ForEachUnitInGroup(bool mustBeAlive, Func&& func) const
 }
 
 template <typename Func>
+void PartyBotAI::ForEachAttackerInGroup(Func&& func) const
+{
+    ForEachUnitInGroup(true,
+        [&](Unit* pUnit) -> bool
+        {
+            for (auto pAttacker : pUnit->GetAttackers())
+            {
+                if (func(pAttacker))
+                    return true;
+            }
+            return false;
+        });
+}
+
+template <typename Func>
 Player* PartyBotAI::FindFirstPlayerInGroupByCondition(bool mustBeAlive, Func&& func) const
 {
     Player* found = nullptr;
@@ -664,24 +679,24 @@ bool PartyBotAI::CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpell
             }
         }
 
-        if (doesDamage && CrowdControledMarkedTargetsExistNear(pTarget))
+        float radius;
+        if (pSpellEntry->EffectRadiusIndex[0])
+            radius = Spells::GetSpellRadius(sSpellRadiusStore.LookupEntry(pSpellEntry->EffectRadiusIndex[0]));
+        else if (pSpellEntry->EffectRadiusIndex[1])
+            radius = Spells::GetSpellRadius(sSpellRadiusStore.LookupEntry(pSpellEntry->EffectRadiusIndex[1]));
+        else if (pSpellEntry->EffectRadiusIndex[2])
+            radius = Spells::GetSpellRadius(sSpellRadiusStore.LookupEntry(pSpellEntry->EffectRadiusIndex[2]));
+        else
+            radius = 10.0f;
+        if (radius > 10.0f)
+            radius = 10.0f;
+
+        if (doesDamage && CrowdControledMarkedTargetsExistNear(pTarget, radius + 0.0f + 2.0f)) // Base range + (TODO: Talents) + cc wander
             return false;
 
         // do not cast aoe if it will pull aggro
         if (m_role != ROLE_TANK && doesDamage && ExistsAsTankInGroupForThreatCheck())
         {
-            float radius;
-            if (pSpellEntry->EffectRadiusIndex[0])
-                radius = Spells::GetSpellRadius(sSpellRadiusStore.LookupEntry(pSpellEntry->EffectRadiusIndex[0]));
-            else if (pSpellEntry->EffectRadiusIndex[1])
-                radius = Spells::GetSpellRadius(sSpellRadiusStore.LookupEntry(pSpellEntry->EffectRadiusIndex[1]));
-            else if (pSpellEntry->EffectRadiusIndex[2])
-                radius = Spells::GetSpellRadius(sSpellRadiusStore.LookupEntry(pSpellEntry->EffectRadiusIndex[2]));
-            else
-                radius = 10.0f;
-            if (radius > 10.0f)
-                radius = 10.0f;
-
             std::list<Unit*> targets;
             me->GetEnemyListInRadiusAround(pTarget, radius, targets);
 
@@ -699,6 +714,50 @@ bool PartyBotAI::CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpell
                     return false;
             }
         }
+    }
+
+    return true;
+}
+
+bool PartyBotAI::CanTryToCastSpell(float x, float y, float z, SpellEntry const* pSpellEntry) const
+{
+    if (pSpellEntry->IsChanneledSpell() && me->IsMoving() && me->IsMovedByPlayer())
+        return false;
+
+    if (!CombatBotBaseAI::CanTryToCastSpell(x, y, z, pSpellEntry))
+        return false;
+
+    if (IsInDuel())
+        return true;
+
+    if (pSpellEntry->IsAreaOfEffectSpell() && !pSpellEntry->IsPositiveSpell())
+    {
+        bool doesDamage = false;
+        for (uint8 i = 0; i < MAX_EFFECT_INDEX; ++i)
+        {
+            if (Spells::IsDirectDamageEffect(pSpellEntry->Effect[i]) || pSpellEntry->EffectApplyAuraName[i] == SPELL_AURA_PERIODIC_DAMAGE)
+            {
+                doesDamage = true;
+                break;
+            }
+        }
+
+        float radius;
+        if (pSpellEntry->EffectRadiusIndex[0])
+            radius = Spells::GetSpellRadius(sSpellRadiusStore.LookupEntry(pSpellEntry->EffectRadiusIndex[0]));
+        else if (pSpellEntry->EffectRadiusIndex[1])
+            radius = Spells::GetSpellRadius(sSpellRadiusStore.LookupEntry(pSpellEntry->EffectRadiusIndex[1]));
+        else if (pSpellEntry->EffectRadiusIndex[2])
+            radius = Spells::GetSpellRadius(sSpellRadiusStore.LookupEntry(pSpellEntry->EffectRadiusIndex[2]));
+        else
+            radius = 10.0f;
+        if (radius > 10.0f)
+            radius = 10.0f;
+
+        if (doesDamage && CrowdControledMarkedTargetsExistNear(x, y, z, radius + 0.0f + 2.0f)) // Base range + (TODO: Talents) + cc wander
+            return false;
+
+        // TODO: do not cast aoe if it will pull aggro
     }
 
     return true;
@@ -723,7 +782,7 @@ bool PartyBotAI::CanUseCrowdControl(SpellEntry const* pSpellEntry, Unit* pTarget
     return true;
 }
 
-bool PartyBotAI::CrowdControledMarkedTargetsExistNear(Unit const* pEnemy, float radius) const
+bool PartyBotAI::CrowdControledMarkedTargetsExistNear(float x, float y, float z, float radius) const
 {
     for (auto mark : m_marksToCC)
     {
@@ -733,13 +792,19 @@ bool PartyBotAI::CrowdControledMarkedTargetsExistNear(Unit const* pEnemy, float 
             {
                 continue;
             }
-            if (pMarkedTarget->GetDistance(pEnemy) < radius)
+            if (pMarkedTarget->GetDistance(x, y, z) < radius)
             {
                 return true;
             }
         }
     }
+    // TODO: Charmed
     return false;
+}
+
+bool PartyBotAI::CrowdControledMarkedTargetsExistNear(Unit const* pEnemy, float radius) const
+{
+    return CrowdControledMarkedTargetsExistNear(pEnemy->GetPositionX(), pEnemy->GetPositionY(), pEnemy->GetPositionZ(), radius);
 }
 
 bool PartyBotAI::AttackStart(Unit* pVictim)
@@ -770,6 +835,48 @@ Unit* PartyBotAI::GetMarkedTarget(RaidTargetIcon mark) const
         return me->GetMap()->GetUnit(targetGuid);
 
     return nullptr;
+}
+
+bool PartyBotAI::IsCCTarget(Unit* pVictim) const
+{
+    if (!pVictim->GetCharmerGuid().IsEmpty() || !pVictim->GetPossessorGuid().IsEmpty())
+    {
+        if (pVictim->IsPlayer() || (pVictim->IsPet() && pVictim->GetOwnerGuid().IsPlayer()))
+            return true;
+    }
+    for (auto mark : m_marksToCC)
+    {
+        ObjectGuid targetGuid = me->GetGroup()->GetTargetWithIcon(mark);
+        if (targetGuid == pVictim->GetObjectGuid())
+            return true;
+    }
+    return false;
+}
+
+bool PartyBotAI::IsValidHostileTarget(Unit const* pVictim) const
+{
+    // Placeholder for raid shenanigans
+
+    return CombatBotBaseAI::IsValidHostileTarget(pVictim);
+}
+
+bool PartyBotAI::IsValidAttackTarget(Unit* pVictim) const
+{
+    if (!pVictim->GetCharmerGuid().IsEmpty() || !pVictim->GetPossessorGuid().IsEmpty())
+    {
+        if (pVictim->IsPlayer() || (pVictim->IsPet() && pVictim->GetOwnerGuid().IsPlayer()))
+            return false;
+    }
+    for (auto mark : m_marksToCC)
+    {
+        ObjectGuid targetGuid = me->GetGroup()->GetTargetWithIcon(mark);
+        if (targetGuid == pVictim->GetObjectGuid())
+        {
+            if (pVictim->HasUnitState(UNIT_STATE_CAN_NOT_REACT_OR_LOST_CONTROL) || GetRole() != ROLE_TANK || pVictim->GetVictim() == me)
+                return false;
+        }
+    }
+    return IsValidHostileTarget(pVictim);
 }
 
 Unit* PartyBotAI::SelectAttackTarget(Player* pLeader) const
@@ -842,7 +949,7 @@ Unit* PartyBotAI::SelectAttackTarget(Player* pLeader) const
         {
             if (Unit* pVictim = pLeader->GetVictim())
             {
-                if (IsValidHostileTarget(pVictim) && CheckThreatOK(pVictim))
+                if (IsValidAttackTarget(pVictim) && CheckThreatOK(pVictim))
                     return pVictim;
             }
         }
@@ -850,7 +957,7 @@ Unit* PartyBotAI::SelectAttackTarget(Player* pLeader) const
         // Who am I attacking.
         if (Unit* pVictim = me->GetVictim())
         {
-            if (IsValidHostileTarget(pVictim) && CheckThreatOK(pVictim))
+            if (IsValidAttackTarget(pVictim) && CheckThreatOK(pVictim))
                 return pVictim;
         }
 
@@ -863,7 +970,7 @@ Unit* PartyBotAI::SelectAttackTarget(Player* pLeader) const
     if (Pet* pPet = me->GetPet())
     {
         if (Unit* pPetAttacker = pPet->GetAttackerForHelper())
-            if (IsValidHostileTarget(pPetAttacker) && CheckThreatOK(pPetAttacker))
+            if (IsValidAttackTarget(pPetAttacker) && CheckThreatOK(pPetAttacker))
                 return pPetAttacker;
     }
 
@@ -884,7 +991,7 @@ Unit* PartyBotAI::SelectPartyAttackTarget() const
                 if (pPartyAttacker && pPartyAttacker->GetHealth() <= pAttacker->GetHealth())
                     continue;
 
-                if (IsValidHostileTarget(pAttacker) && CheckThreatOK(pAttacker))
+                if (IsValidAttackTarget(pAttacker) && CheckThreatOK(pAttacker))
                     pPartyAttacker = pAttacker;
             }
 
@@ -895,7 +1002,7 @@ Unit* PartyBotAI::SelectPartyAttackTarget() const
                     if (pPartyAttacker && pPartyAttacker->GetHealth() <= pAttacker->GetHealth())
                         continue;
 
-                    if (IsValidHostileTarget(pAttacker) && CheckThreatOK(pAttacker))
+                    if (IsValidAttackTarget(pAttacker) && CheckThreatOK(pAttacker))
                         pPartyAttacker = pAttacker;
                 }
             }
@@ -983,14 +1090,14 @@ Unit* PartyBotAI::SelectPartyDefendTarget(Unit* pSelectingFor) const
     // Attackers attacking members that are healers, and aren't the victim of another tank
     for (Unit* pAttacker : attackingHealer)
     {
-        if (otherTankVictims.count(pAttacker) == 0 && IsValidHostileTarget(pAttacker))
+        if (otherTankVictims.count(pAttacker) == 0 && IsValidAttackTarget(pAttacker))
             return pAttacker;
     }
 
     // Attackers attacking members that aren't tanks/healers, and aren't the victim of another tank
     for (Unit* pAttacker : attackingNonTank)
     {
-        if (otherTankVictims.count(pAttacker) == 0 && IsValidHostileTarget(pAttacker))
+        if (otherTankVictims.count(pAttacker) == 0 && IsValidAttackTarget(pAttacker))
             return pAttacker;
     }
 
@@ -1007,7 +1114,7 @@ Unit* PartyBotAI::SelectPartyDefendTarget(Unit* pSelectingFor) const
         uint32 attackingTank = static_cast<uint32>(victimTank->GetAttackers().size());
 
         // Look for the attacker that closes the biggest attacker difference
-        if ((attackingTank > bestDelta + attackingMe) && IsValidHostileTarget(pAttacker))
+        if ((attackingTank > bestDelta + attackingMe) && IsValidAttackTarget(pAttacker))
         {
             bestDelta = attackingTank - attackingMe;
             bestCandidate = pAttacker;
@@ -1043,14 +1150,25 @@ Unit* PartyBotAI::SelectPartyDefendTarget(Unit* pSelectingFor) const
         float threatDiff = myThreat - otherThreat;
         if (!pFound || threatDiff < lowThreatDiff)
         {
-            if (IsValidHostileTarget(pAttacker))
+            if (IsValidAttackTarget(pAttacker))
             {
                 pFound = pAttacker;
                 lowThreatDiff = threatDiff;
             }
         }
     }
-    return pFound;
+    if (pFound)
+        return pFound;
+
+    for (Unit* pAttacker : attackingOtherTank)
+    {
+        if (IsValidAttackTarget(pAttacker))
+        {
+            return pAttacker;
+        }
+    }
+
+    return nullptr;
 }
 
 Player* PartyBotAI::SelectResurrectionTarget() const
@@ -1079,6 +1197,29 @@ Player* PartyBotAI::SelectResurrectionTarget() const
     }
 
     return nullptr;
+}
+
+bool PartyBotAI::InterruptPartyAttackers(const SpellEntry* pSpellEntry)
+{
+    if (me->HasGCD(pSpellEntry))
+        return false;
+
+    bool castOk = false;
+    ForEachAttackerInGroup(
+        [&](Unit* pUnit) -> bool
+        {
+            if (pUnit->IsNonMeleeSpellCasted(false, false, true) && IsValidHostileTarget(pUnit) && CanTryToCastSpell(pUnit, pSpellEntry))
+            {
+                if (DoCastSpell(pUnit, pSpellEntry) == SPELL_CAST_OK)
+                {
+                    castOk = true;
+                    return true;
+                }
+            }
+            return false; // continue
+        });
+
+    return castOk;
 }
 
 Player* PartyBotAI::SelectShieldTarget() const
@@ -1180,6 +1321,27 @@ bool PartyBotAI::CrowdControlMarkedTargets()
             }
         }
     }
+
+    ForEachUnitInGroup(true,
+        [&](Unit* pUnit) -> bool
+        {
+            if (!pUnit->GetCharmerGuid().IsEmpty() || !pUnit->GetPossessorGuid().IsEmpty())
+            {
+                if (!pUnit->HasUnitState(UNIT_STATE_CAN_NOT_REACT_OR_LOST_CONTROL) && IsValidHostileTarget(pUnit) && !AreOthersOnSameTarget(pUnit->GetObjectGuid()))
+                {
+                    if (CanTryToCastSpell(pUnit, pSpellEntry))
+                    {
+                        if (DoCastSpell(pUnit, pSpellEntry) == SPELL_CAST_OK)
+                        {
+                            me->ClearUnitState(UNIT_STATE_MELEE_ATTACKING);
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false; // continue
+        });
+
     return false;
 }
 
@@ -1423,11 +1585,16 @@ void PartyBotAI::UpdateAI(uint32 const diff)
     if (GetRole() == ROLE_TANK && me->HasAura(25895))
         me->RemoveAurasDueToSpellByCancel(25895);
 
-    // When a client is attached, the bot can become flagged as moving when it's not... attempt to fix the symptom, as identifying the cause is beyond me.
+    // When a client is attached, the bot can become flagged as moving when it's not... attempt to fix the symptoms, as identifying the cause is beyond me.
     if (!m_noClient)
     {
-        if (m_clientMovementTimer.Passed() && me->IsMoving() && me->IsMovedByPlayer() && me->GetMotionMaster()->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE)
-            me->RemoveUnitMovementFlag(MOVEFLAG_MASK_MOVING);
+        if (m_clientMovementTimer.Passed() && me->IsMovedByPlayer() && me->GetMotionMaster()->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE)
+        {
+            if (!me->IsStopped())
+                me->StopMoving(true);
+            else if (me->IsMoving())
+                me->RemoveUnitMovementFlag(MOVEFLAG_MASK_MOVING);
+        }
     }
 
     if (me->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL))
@@ -1654,7 +1821,7 @@ void PartyBotAI::UpdateAI(uint32 const diff)
             if (!me->HasUnitState(UNIT_STATE_MELEE_ATTACKING) &&
                (GetRole() == ROLE_MELEE_DPS || m_role == ROLE_TANK) &&
                 !me->HasAuraType(SPELL_AURA_MOD_STEALTH) &&
-                IsValidHostileTarget(pVictim) &&
+                IsValidAttackTarget(pVictim) &&
                 AttackStart(pVictim))
                 return;
 
@@ -2899,6 +3066,12 @@ void PartyBotAI::UpdateInCombatAI_Mage()
                 return;
         }
 
+        if (m_spells.mage.pCounterspell)
+        {
+            if (InterruptPartyAttackers(m_spells.mage.pCounterspell))
+                return;
+        }
+
         if (m_spells.mage.pRemoveLesserCurse)
         {
             if (Unit* pFriend = SelectDispelTarget(m_spells.mage.pRemoveLesserCurse))
@@ -2911,11 +3084,78 @@ void PartyBotAI::UpdateInCombatAI_Mage()
             }
         }
 
-        if (m_spells.mage.pBlizzard && (enemyCountAroundVictim > 2) &&
-            CanTryToCastSpell(pVictim, m_spells.mage.pBlizzard, true))
+        //if (m_spells.mage.pBlizzard && (enemyCountAroundVictim > 2) &&
+        //    CanTryToCastSpell(pVictim, m_spells.mage.pBlizzard, true))
+        //{
+        //    if (DoCastSpell(pVictim, m_spells.mage.pBlizzard) == SPELL_CAST_OK)
+        //        return;
+        //}
+        if (m_spells.mage.pBlizzard && (enemyCountAroundVictim > 2))
         {
-            if (DoCastSpell(pVictim, m_spells.mage.pBlizzard) == SPELL_CAST_OK)
-                return;
+            bool checkThreat = ExistsAsTankInGroupForThreatCheck();
+            bool threatOk = true;
+            std::list<Unit*> targets;
+            me->GetEnemyListInRadiusAround(pVictim, 15.0f, targets);
+            float ccX = 0.0f, ccY = 0.0f, vicX = 0.0f, vicY = 0.0f, vicZ = -1000.0f;
+            uint8 ccCount = 0, vicCount = 0;
+            for (auto const& pEnemy : targets)
+            {
+                if (IsCCTarget(pEnemy))
+                {
+                    ccX += pEnemy->GetPositionX();
+                    ccY += pEnemy->GetPositionY();
+                    ccCount++;
+                }
+                else
+                {
+                    if (checkThreat && pEnemy->CanHaveThreatList() && !CheckThreatForMember(me, pEnemy))
+                    {
+                        threatOk = false;
+                        break;
+                    }
+
+                    vicX += pEnemy->GetPositionX();
+                    vicY += pEnemy->GetPositionY();
+                    vicZ = std::max(vicZ, pEnemy->GetPositionZ());
+                    vicCount++;
+                }
+            }
+            if (threatOk && vicCount > 2)
+            {
+                vicX = vicX / vicCount;
+                vicY = vicY / vicCount;
+                if (ccCount)
+                {
+                    ccX = ccX / ccCount;
+                    ccY = ccY / ccCount;
+
+                    float dx = vicX - ccX;
+                    float dy = vicY - ccY;
+                    float distSq = dx * dx + dy * dy;
+                    constexpr float minDist = 10.0f + 0.0f + 2.0f; // Base range + (TODO: Talents) + cc wander
+                    constexpr float minDistSq = minDist * minDist;
+
+                    if (distSq < minDistSq)
+                    {
+                        float dist = std::sqrt(distSq);
+                        if (dist > 2.0f)
+                        {
+                            float scale = minDist / dist;
+                            dx *= scale;
+                            dy *= scale;
+                            vicX = ccX + dx;
+                            vicY = ccY + dy;
+                        }
+                    }
+                }
+
+                pVictim->UpdateGroundPositionZ(vicX, vicY, vicZ);
+                if (CanTryToCastSpell(vicX, vicY, vicZ, m_spells.mage.pBlizzard))
+                {
+                    if (DoCastSpell(vicX, vicY, vicZ, m_spells.mage.pBlizzard) == SPELL_CAST_OK)
+                        return;
+                }
+            }
         }
 
         if (m_spells.mage.pPolymorph)
@@ -3320,14 +3560,6 @@ void PartyBotAI::UpdateInCombatAI_Priest()
             }
         }
 
-        // Apply HoT aura for small injuries.
-        if (me->GetLevel() > 50 || me->GetPowerPercent(POWER_MANA) > 90.0f)
-        {
-            if (Unit* pTarget = SelectPeriodicHealTarget(80.0f, 90.0f))
-                if (HealInjuredTargetPeriodic(pTarget))
-                    return;
-        }
-
         // Dispels
         if (m_spells.priest.pDispelMagic)
         {
@@ -3351,6 +3583,14 @@ void PartyBotAI::UpdateInCombatAI_Priest()
                         return;
                 }
             }
+        }
+
+        // Apply HoT aura for small injuries.
+        if (me->GetLevel() > 50 || me->GetPowerPercent(POWER_MANA) > 90.0f || me->IsMoving())
+        {
+            if (Unit* pTarget = SelectPeriodicHealTarget(80.0f, 90.0f))
+                if (HealInjuredTargetPeriodic(pTarget))
+                    return;
         }
 
         if (GetRole() == ROLE_HEALER && FindAndPreHealTarget())
@@ -4416,6 +4656,12 @@ void PartyBotAI::UpdateInCombatAI_Rogue()
             }
         }
 
+        if (m_spells.rogue.pKick)
+        {
+            if (InterruptPartyAttackers(m_spells.rogue.pKick))
+                return;
+        }
+
         if (!me->HasAuraType(SPELL_AURA_MOD_STEALTH))
         {
             if (m_spells.rogue.pEvasion &&
@@ -4743,7 +4989,7 @@ void PartyBotAI::UpdateInCombatAI_Druid()
         }
 
         // Prioritize applying HoTs.
-        if (me->GetLevel() > 50 || me->GetPowerPercent(POWER_MANA) > 90.0f)
+        if (me->GetLevel() > 50 || me->GetPowerPercent(POWER_MANA) > 90.0f || me->IsMoving())
         {
             if (Unit* pTarget = SelectPeriodicHealTarget(80.0f, 90.0f))
                 if (HealInjuredTargetPeriodic(pTarget))

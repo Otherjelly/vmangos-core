@@ -63,6 +63,8 @@ public:
     template <typename Func>
     void ForEachUnitInGroup(bool mustBeAlive, Func&& func) const;
     template <typename Func>
+    void ForEachAttackerInGroup(Func&& func) const;
+    template <typename Func>
     Player* FindFirstPlayerInGroupByCondition(bool mustBeAlive, Func&& func) const;
     template <typename Func>
     Unit* FindFirstUnitInGroupByCondition(bool mustBeAlive, Func&& func) const;
@@ -80,20 +82,26 @@ public:
 
     bool CheckThreatOK(Unit const* pTarget, SpellEntry const* pSpellEntry = nullptr) const;
     bool CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry, bool ignoreAppliesAuraCheck = false, bool checkAuraCaster = false, bool ignoreStacks = false) const final;
+    bool CanTryToCastSpell(float x, float y, float z, SpellEntry const* pSpellEntry) const;
     Player* GetPartyLeader() const;
     Player* GetBotOwner() const;
     bool AttackStart(Unit* pVictim);
+    bool IsCCTarget(Unit* pVictim) const;
+    bool IsValidHostileTarget(Unit const* pVictim) const;
+    bool IsValidAttackTarget(Unit* pVictim) const;
     Unit* SelectAttackTarget(Player* pLeader) const;
     Unit* SelectPartyAttackTarget() const;
     Unit* SelectDispelAttackerTarget(SpellEntry const* pSpellEntry) const;
     Unit* SelectPartyDefendTarget(Unit* pSelectingFor) const;
     Player* SelectResurrectionTarget() const;
+    bool InterruptPartyAttackers(const SpellEntry* pSpellEntry);
     Player* SelectShieldTarget() const;
     Unit* SelectBuffTargetByRole(SpellEntry const* pSpellEntry, CombatBotRoles role) const;
     void EvaluateRebuffTarget(SpellEntry const* spell, RebuffCandidate& bestCandidate, bool asCaster = false, Unit* pTarget = nullptr);
     void EvaluateRebuffTargetForAuraHolder(SpellEntry const* pSpellEntry, RebuffCandidate& bestCandidate, SpellAuraHolder* auraHolder);
     Unit* GetMarkedTarget(RaidTargetIcon mark) const;
     bool CanUseCrowdControl(SpellEntry const* pSpellEntry, Unit* pTarget) const;
+    bool CrowdControledMarkedTargetsExistNear(float x, float y, float z, float radius = 15.0f) const;
     bool CrowdControledMarkedTargetsExistNear(Unit const* pTarget, float radius = 15.0f) const;
     Aura* GetAura(AuraType type, int32 maxDuration);
     bool DrinkAndEat();

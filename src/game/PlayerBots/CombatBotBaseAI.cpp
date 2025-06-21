@@ -2297,6 +2297,13 @@ bool CombatBotBaseAI::AreOthersOnSameTarget(ObjectGuid guid, bool checkMelee, bo
             if (pMember == me)
                 continue;
 
+            // Alive - TODO: Confirm required
+            if (pMember->IsDead())
+            {
+                sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "AreOthersOnSameTarget - %s considering %s who is dead", me->GetName(), pMember->GetName());
+                continue;
+            }
+
             // Not the target itself.
             if (pMember->GetObjectGuid() == guid)
                 continue;
@@ -2644,6 +2651,7 @@ bool CombatBotBaseAI::IsValidHostileTarget(Unit const* pTarget) const
            pTarget->IsVisibleForOrDetect(me, me, false) &&
            !pTarget->HasBreakableByDamageCrowdControlAura() &&
            !pTarget->IsTotalImmune() &&
+           !(pTarget->IsCreature() && (pTarget->ToCreature()->GetCreatureInfo()->school_immune_mask == SPELL_SCHOOL_MASK_ALL)) &&
            pTarget->GetTransport() == me->GetTransport();
 }
 
@@ -3586,23 +3594,69 @@ bool CombatBotBaseAI::CanTryToCastSpell(Unit const* pTarget, SpellEntry const* p
     return true;
 }
 
+bool CombatBotBaseAI::CanTryToCastSpell(float x, float y, float z, SpellEntry const* pSpellEntry) const
+{
+    if (!me->IsSpellReady(pSpellEntry->Id))
+        return false;
+
+    if (me->HasGCD(pSpellEntry))
+        return false;
+
+    if (pSpellEntry->CasterAuraState && !me->HasAuraState(AuraState(pSpellEntry->CasterAuraState)))
+        return false;
+
+    uint32 const powerCost = Spell::CalculatePowerCost(pSpellEntry, me);
+    Powers const powerType = Powers(pSpellEntry->powerType);
+
+    if (powerType == POWER_HEALTH)
+    {
+        if (me->GetHealth() <= powerCost)
+            return false;
+        return true;
+    }
+
+    if (me->GetPower(powerType) < powerCost)
+        return false;
+
+    if (pSpellEntry->GetErrorAtShapeshiftedCast(me->GetShapeshiftForm()) != SPELL_CAST_OK)
+        return false;
+
+    SpellRangeEntry const* srange = sSpellRangeStore.LookupEntry(pSpellEntry->rangeIndex);
+    if (pSpellEntry->EffectImplicitTargetA[0] != TARGET_UNIT_CASTER)
+    {
+        float const dist = me->GetDistance2d(x, y, SizeFactor::CombatReach);
+
+        if (dist > srange->maxRange)
+            return false;
+        if (srange->minRange && dist < srange->minRange)
+            return false;
+    }
+
+    return true;
+}
+
 bool CombatBotBaseAI::DoNotRotate()
 {
     return !m_clientMovementTimer.Passed();
 }
 
-bool CombatBotBaseAI::FaceObject(WorldObject const* pObject)
+bool CombatBotBaseAI::FacePosition(float x, float y)
 {
     if (!DoNotRotate() && me->IsStopped())  // Don't rotate if moved by movement generator
     {
         float arc = me->IsMoving() ? M_PI_F : M_PI_F / 4;
-        if (!me->HasInArc(pObject, arc))
+        if (!me->HasInArc(arc, x, y))
         {
-            me->SetFacingTo(me->GetAngle(pObject));
+            me->SetFacingTo(me->GetAngle(x, y));
             return true;
         }
     }
     return false;
+}
+
+bool CombatBotBaseAI::FaceObject(WorldObject const* pObject)
+{
+    return FacePosition(pObject->GetPositionX(), pObject->GetPositionY());
 }
 
 SpellCastResult CombatBotBaseAI::DoCastSpell(Unit* pTarget, SpellEntry const* pSpellEntry)
@@ -3648,6 +3702,35 @@ SpellCastResult CombatBotBaseAI::DoCastSpell(Unit* pTarget, SpellEntry const* pS
 
     if (result == SPELL_CAST_OK)
         RecentSpellsAdd(pTarget->GetGUIDLow(), pSpellEntry->Id);
+
+    return result;
+}
+
+SpellCastResult CombatBotBaseAI::DoCastSpell(float x, float y, float z, SpellEntry const* pSpellEntry)
+{
+    if (pSpellEntry->IsNeedFaceTarget())
+        FacePosition(x, y);
+
+    if (me->IsMounted())
+        me->RemoveSpellsCausingAura(SPELL_AURA_MOUNTED);
+
+    auto result = me->CastSpell(x, y, z, pSpellEntry, false);
+
+    // printf("cast %s result %u\n", pSpellEntry->SpellName[0].c_str(), result);
+
+    if ((result == SPELL_FAILED_MOVING || result == SPELL_CAST_OK) && (pSpellEntry->GetCastTime(me) > 0 || pSpellEntry->IsChanneledSpell()) && (me->IsMoving() || !me->IsStopped()))
+        me->StopMoving();
+
+    if ((result == SPELL_FAILED_NEED_AMMO_POUCH || result == SPELL_FAILED_ITEM_NOT_READY) && pSpellEntry->Reagent[0])
+    {
+        if (m_temporaryCharacter)
+        {
+             if (Item* pItem = me->GetItemByPos(INVENTORY_SLOT_BAG_0, INVENTORY_SLOT_ITEM_START))
+                 me->DestroyItem(INVENTORY_SLOT_BAG_0, INVENTORY_SLOT_ITEM_START, true);
+        }
+
+        AddItemToInventory(pSpellEntry->Reagent[0]);
+    }
 
     return result;
 }
