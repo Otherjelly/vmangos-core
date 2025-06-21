@@ -81,6 +81,7 @@ public:
     CombatBotRoles FindMajorityRoleForClass(Classes unitClass) const;
 
     bool CheckThreatOK(Unit const* pTarget, SpellEntry const* pSpellEntry = nullptr) const;
+    bool GetAoeCoordinates(Unit* pCenter, float& outX, float& outY, float& outZ);
     bool CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry, bool ignoreAppliesAuraCheck = false, bool checkAuraCaster = false, bool ignoreStacks = false) const final;
     bool CanTryToCastSpell(float x, float y, float z, SpellEntry const* pSpellEntry) const;
     Player* GetPartyLeader() const;
@@ -142,6 +143,7 @@ public:
     void UpdateInCombatAI_Druid() final;
     void UpdateOutOfCombatAI_Druid() final;
     void UpdateInCombatPetAI();
+    void RemoveAspectOfThePack();
 
     std::vector<RaidTargetIcon> m_marksToCC;
     std::vector<RaidTargetIcon> m_marksToFocus;

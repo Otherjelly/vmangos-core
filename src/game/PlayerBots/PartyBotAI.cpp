@@ -653,6 +653,81 @@ bool PartyBotAI::CheckThreatOK(Unit const* pTarget, SpellEntry const* pSpellEntr
     return CheckThreatForMember(me, pTarget);
 }
 
+bool PartyBotAI::GetAoeCoordinates(Unit* pCenter, float& outX, float& outY, float& outZ)
+{
+    bool checkThreat = ExistsAsTankInGroupForThreatCheck();
+    bool threatOk = true;
+    std::list<Unit*> targets;
+    me->GetEnemyListInRadiusAround(pCenter, 15.0f, targets);
+
+    float ccX = 0.0f, ccY = 0.0f;
+    float vicX = 0.0f, vicY = 0.0f;
+    float vicZ = -1000.0f;
+    uint8 ccCount = 0, vicCount = 0;
+
+    for (Unit* pEnemy : targets)
+    {
+        if (IsCCTarget(pEnemy))
+        {
+            ccX += pEnemy->GetPositionX();
+            ccY += pEnemy->GetPositionY();
+            ccCount++;
+        }
+        else
+        {
+            if (checkThreat && pEnemy->CanHaveThreatList() && !CheckThreatForMember(me, pEnemy))
+            {
+                threatOk = false;
+                break;
+            }
+
+            vicX += pEnemy->GetPositionX();
+            vicY += pEnemy->GetPositionY();
+            vicZ = std::max(vicZ, pEnemy->GetPositionZ());
+            vicCount++;
+        }
+    }
+
+    if (!threatOk || vicCount <= 2)
+        return false;
+
+    vicX /= vicCount;
+    vicY /= vicCount;
+
+    if (ccCount > 0)
+    {
+        ccX /= ccCount;
+        ccY /= ccCount;
+
+        float dx = vicX - ccX;
+        float dy = vicY - ccY;
+        float distSq = dx * dx + dy * dy;
+
+        constexpr float minDist = 12.0f; // 10 base + 2 fudge
+        constexpr float minDistSq = minDist * minDist;
+
+        if (distSq < minDistSq)
+        {
+            float dist = std::sqrt(distSq);
+            if (dist > 2.0f)
+            {
+                float scale = minDist / dist;
+                dx *= scale;
+                dy *= scale;
+                vicX = ccX + dx;
+                vicY = ccY + dy;
+            }
+        }
+    }
+
+    pCenter->UpdateGroundPositionZ(vicX, vicY, vicZ);
+    outX = vicX;
+    outY = vicY;
+    outZ = vicZ;
+
+    return true;
+}
+
 bool PartyBotAI::CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpellEntry, bool ignoreAppliesAuraCheck, bool checkAuraCaster, bool ignoreStacks) const
 {
     if (!CheckThreatOK(pTarget, pSpellEntry))
@@ -2545,7 +2620,7 @@ void PartyBotAI::UpdateInCombatAI_Shaman()
 void PartyBotAI::UpdateOutOfCombatAI_Hunter()
 {
     // TODO: Check more things.. e.g. leader has selected a hostile target in range
-    if (m_spells.hunter.pAspectOfThePack && !me->GetVictim())
+    if (m_spells.hunter.pAspectOfThePack && !me->GetVictim() && m_groupData->losPosition.IsEmpty())
     {
         if (CanTryToCastSpell(me, m_spells.hunter.pAspectOfThePack) && DoCastSpell(me, m_spells.hunter.pAspectOfThePack) == SPELL_CAST_OK)
         {
@@ -2624,13 +2699,18 @@ void PartyBotAI::UpdateInCombatPetAI()
     }
 }
 
-void PartyBotAI::UpdateInCombatAI_Hunter()
+void PartyBotAI::RemoveAspectOfThePack()
 {
-    if (m_spells.hunter.pAspectOfThePack)
+    if (me->GetClass() == CLASS_HUNTER && m_spells.hunter.pAspectOfThePack)
     {
         if (SpellAuraHolder* pAuraHolder = me->GetSpellAuraHolder(m_spells.hunter.pAspectOfThePack->Id, me->GetObjectGuid()))
             me->RemoveAurasDueToSpellByCancel(m_spells.hunter.pAspectOfThePack->Id);
     }
+}
+
+void PartyBotAI::UpdateInCombatAI_Hunter()
+{
+    RemoveAspectOfThePack();
 
     if (Unit* pVictim = me->GetVictim())
     {
@@ -2652,12 +2732,17 @@ void PartyBotAI::UpdateInCombatAI_Hunter()
                 return;
         }
 
-        if (m_spells.hunter.pVolley &&
-           (me->GetEnemyCountInRadiusAround(pVictim, 10.0f) > 2) &&
-            CanTryToCastSpell(pVictim, m_spells.hunter.pVolley))
+        if (m_spells.hunter.pVolley && (me->GetEnemyCountInRadiusAround(pVictim, 10.0f) > 2))
         {
-            if (DoCastSpell(pVictim, m_spells.hunter.pVolley) == SPELL_CAST_OK)
-                return;
+            float x, y, z;
+            if (GetAoeCoordinates(pVictim, x, y, z))
+            {
+                if (CanTryToCastSpell(x, y, z, m_spells.hunter.pVolley))
+                {
+                    if (DoCastSpell(x, y, z, m_spells.hunter.pVolley) == SPELL_CAST_OK)
+                        return;
+                }
+            }
         }
 
         if (me->HasSpell(PB_SPELL_AUTO_SHOT) &&
@@ -3084,75 +3169,14 @@ void PartyBotAI::UpdateInCombatAI_Mage()
             }
         }
 
-        //if (m_spells.mage.pBlizzard && (enemyCountAroundVictim > 2) &&
-        //    CanTryToCastSpell(pVictim, m_spells.mage.pBlizzard, true))
-        //{
-        //    if (DoCastSpell(pVictim, m_spells.mage.pBlizzard) == SPELL_CAST_OK)
-        //        return;
-        //}
         if (m_spells.mage.pBlizzard && (enemyCountAroundVictim > 2))
         {
-            bool checkThreat = ExistsAsTankInGroupForThreatCheck();
-            bool threatOk = true;
-            std::list<Unit*> targets;
-            me->GetEnemyListInRadiusAround(pVictim, 15.0f, targets);
-            float ccX = 0.0f, ccY = 0.0f, vicX = 0.0f, vicY = 0.0f, vicZ = -1000.0f;
-            uint8 ccCount = 0, vicCount = 0;
-            for (auto const& pEnemy : targets)
+            float x, y, z;
+            if (GetAoeCoordinates(pVictim, x, y, z))
             {
-                if (IsCCTarget(pEnemy))
+                if (CanTryToCastSpell(x, y, z, m_spells.mage.pBlizzard))
                 {
-                    ccX += pEnemy->GetPositionX();
-                    ccY += pEnemy->GetPositionY();
-                    ccCount++;
-                }
-                else
-                {
-                    if (checkThreat && pEnemy->CanHaveThreatList() && !CheckThreatForMember(me, pEnemy))
-                    {
-                        threatOk = false;
-                        break;
-                    }
-
-                    vicX += pEnemy->GetPositionX();
-                    vicY += pEnemy->GetPositionY();
-                    vicZ = std::max(vicZ, pEnemy->GetPositionZ());
-                    vicCount++;
-                }
-            }
-            if (threatOk && vicCount > 2)
-            {
-                vicX = vicX / vicCount;
-                vicY = vicY / vicCount;
-                if (ccCount)
-                {
-                    ccX = ccX / ccCount;
-                    ccY = ccY / ccCount;
-
-                    float dx = vicX - ccX;
-                    float dy = vicY - ccY;
-                    float distSq = dx * dx + dy * dy;
-                    constexpr float minDist = 10.0f + 0.0f + 2.0f; // Base range + (TODO: Talents) + cc wander
-                    constexpr float minDistSq = minDist * minDist;
-
-                    if (distSq < minDistSq)
-                    {
-                        float dist = std::sqrt(distSq);
-                        if (dist > 2.0f)
-                        {
-                            float scale = minDist / dist;
-                            dx *= scale;
-                            dy *= scale;
-                            vicX = ccX + dx;
-                            vicY = ccY + dy;
-                        }
-                    }
-                }
-
-                pVictim->UpdateGroundPositionZ(vicX, vicY, vicZ);
-                if (CanTryToCastSpell(vicX, vicY, vicZ, m_spells.mage.pBlizzard))
-                {
-                    if (DoCastSpell(vicX, vicY, vicZ, m_spells.mage.pBlizzard) == SPELL_CAST_OK)
+                    if (DoCastSpell(x, y, z, m_spells.mage.pBlizzard) == SPELL_CAST_OK)
                         return;
                 }
             }
@@ -3939,12 +3963,17 @@ void PartyBotAI::UpdateInCombatAI_Warlock()
             }
         }
 
-        if (m_spells.warlock.pRainOfFire &&
-           (me->GetEnemyCountInRadiusAround(pVictim, 10.0f) > 2) &&
-            CanTryToCastSpell(pVictim, m_spells.warlock.pRainOfFire))
+        if (m_spells.warlock.pRainOfFire && (me->GetEnemyCountInRadiusAround(pVictim, 10.0f) > 2))
         {
-            if (DoCastSpell(pVictim, m_spells.warlock.pRainOfFire) == SPELL_CAST_OK)
-                return;
+            float x, y, z;
+            if (GetAoeCoordinates(pVictim, x, y, z))
+            {
+                if (CanTryToCastSpell(x, y, z, m_spells.warlock.pRainOfFire))
+                {
+                    if (DoCastSpell(x, y, z, m_spells.warlock.pRainOfFire) == SPELL_CAST_OK)
+                        return;
+                }
+            }
         }
 
         if (m_spells.warlock.pDemonicSacrifice)
@@ -5280,12 +5309,17 @@ void PartyBotAI::UpdateInCombatAI_Druid()
             if (me->GetMotionMaster()->GetCurrentMovementGeneratorType() == DISTANCING_MOTION_TYPE)
                 return;
 
-            if (m_spells.druid.pHurricane &&
-               (me->GetEnemyCountInRadiusAround(pVictim, 10.0f) > 2) &&
-                CanTryToCastSpell(pVictim, m_spells.druid.pHurricane))
+            if (m_spells.druid.pHurricane && (me->GetEnemyCountInRadiusAround(pVictim, 10.0f) > 2))
             {
-                if (DoCastSpell(pVictim, m_spells.druid.pHurricane) == SPELL_CAST_OK)
-                    return;
+                float x, y, z;
+                if (GetAoeCoordinates(pVictim, x, y, z))
+                {
+                    if (CanTryToCastSpell(x, y, z, m_spells.druid.pHurricane))
+                    {
+                        if (DoCastSpell(x, y, z, m_spells.druid.pHurricane) == SPELL_CAST_OK)
+                            return;
+                    }
+                }
             }
 
             if (m_spells.druid.pMoonfire &&

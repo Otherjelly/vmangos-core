@@ -2031,6 +2031,9 @@ bool HandlePartyBotPauseApplyHelper(Player* pTarget, uint32 duration)
 
             if (duration)
             {
+                // TODO: Consider moving all this to "PartyBot::OnPause()"
+                pAI->RemoveAspectOfThePack();
+
                 if (!pTarget->IsTaxiFlying())
                 {
                     pTarget->StopMoving();
