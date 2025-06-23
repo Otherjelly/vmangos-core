@@ -675,7 +675,7 @@ bool PartyBotAI::GetAoeCoordinates(Unit* pCenter, float& outX, float& outY, floa
         }
         else
         {
-            if (checkThreat && pEnemy->CanHaveThreatList() && !CheckThreatForMember(me, pEnemy))
+            if (checkThreat && pEnemy->CanHaveThreatList() && (!pEnemy->IsInCombat() || !CheckThreatForMember(me, pEnemy)))
             {
                 threatOk = false;
                 break;
@@ -2002,9 +2002,13 @@ void PartyBotAI::UpdateInCombatAI()
             // Defend party members.
             if (Unit* pTarget = SelectPartyDefendTarget(me))
             {
-                me->AttackStop(true);
-                AttackStart(pTarget);
-                pVictim = pTarget;
+                if (pTarget != pVictim)
+                {
+                    if (pVictim)
+                        me->AttackStop(true);
+                    AttackStart(pTarget);
+                    pVictim = pTarget;
+                }
             }
 
             // Taunt target if its attacking someone else.
@@ -2165,6 +2169,11 @@ void PartyBotAI::UpdateOutOfCombatAI_Paladin()
             if (!spell)
                 continue;
 
+            if (role != ROLE_HEALER &&
+               (spell == m_spells.paladin.pGreaterBlessingOfSalvation || spell == m_spells.paladin.pBlessingOfSalvation) &&
+               (!ExistsAsTankInGroupForThreatCheck()))
+                continue;
+
             CombatBotRoles majorityRoleForClass = FindMajorityRoleForClass(static_cast<Classes>(pMember->GetClass()));
             if (role != majorityRoleForClass && spell->GetMaxDuration() > 300000)
                 continue;
@@ -2229,7 +2238,7 @@ void PartyBotAI::UpdateOutOfCombatAI_Paladin()
         }
     }
 
-    if (m_role == ROLE_HEALER && !me->IsMoving())
+    if ((m_role == ROLE_HEALER || !ExistsAsHealerInGroupForOffHealCheck()) && !me->IsMoving())
     {
         if (FindAndHealInjuredAlly())
             return;
@@ -3685,7 +3694,7 @@ void PartyBotAI::UpdateInCombatAI_Priest()
         }
 
         if (m_spells.priest.pManaBurn &&
-           (pVictim->GetPowerType() == POWER_MANA) &&
+           (pVictim->GetPowerType() == POWER_MANA && pVictim->GetPower(POWER_MANA) > me->GetLevel() * 2) &&
             CanTryToCastSpell(pVictim, m_spells.priest.pManaBurn))
         {
             if (DoCastSpell(pVictim, m_spells.priest.pManaBurn) == SPELL_CAST_OK)
@@ -3920,7 +3929,7 @@ void PartyBotAI::UpdateInCombatAI_Warlock()
         }
 
         if (m_spells.warlock.pDeathCoil &&
-           (pVictim->CanReachWithMeleeAutoAttack(me) || pVictim->IsNonMeleeSpellCasted()) &&
+           (pVictim->CanReachWithMeleeAutoAttack(me) || (pVictim->IsNonMeleeSpellCasted() && (pVictim->IsPlayer() || me->GetDistance2d(pVictim) < 10.0f))) &&
             CanTryToCastSpell(pVictim, m_spells.warlock.pDeathCoil))
         {
             if (DoCastSpell(pVictim, m_spells.warlock.pDeathCoil) == SPELL_CAST_OK)
