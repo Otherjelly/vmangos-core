@@ -1129,7 +1129,17 @@ void CombatBotBaseAI::PopulateSpellData()
             }
             case CLASS_WARLOCK:
             {
-                if (pSpellEntry->SpellName[0].find("Demon Skin") != std::string::npos)
+                if (pSpellEntry->SpellName[0].find("Summon Dreadsteed") != std::string::npos)
+                {
+                    if (IsHigherRankSpell(m_mountSpell))
+                        m_mountSpell = pSpellEntry;
+                }
+                else if (pSpellEntry->SpellName[0].find("Summon Felsteed") != std::string::npos)
+                {
+                    if (IsHigherRankSpell(m_mountSpell))
+                        m_mountSpell = pSpellEntry;
+                }
+                else if (pSpellEntry->SpellName[0].find("Demon Skin") != std::string::npos)
                 {
                     if (IsHigherRankSpell(m_spells.warlock.pDemonSkin))
                         m_spells.warlock.pDemonSkin = pSpellEntry;
@@ -2536,13 +2546,42 @@ Unit* CombatBotBaseAI::SelectHealTarget(float selfHealPercent, float groupHealPe
                 if ((IsValidHealTarget(pMember, groupHealPercent) &&
                     healthPercent > pMember->GetHealthPercent()) ||
                     // Or a pet if there are no injured players.
-                    (!pTarget && (pMember = pMember->GetPet()) &&
-                      IsValidHealTarget(pMember, groupHealPercent)))
+                    (!pTarget && (pMember = pMember->GetPet()) && IsValidHealTarget(pMember, groupHealPercent) && healthPercent > pMember->GetHealthPercent()))
                 {
                     healthPercent = pMember->GetHealthPercent();
                     pTarget = pMember;
                 }
             }
+        }
+    }
+
+    for (auto it = m_groupData->protectedUnits.begin(); it != m_groupData->protectedUnits.end();)
+    {
+        const ObjectGuid& guid = it->first;
+        CombatBotRoles role = it->second;
+        if (Unit* pMember = me->GetMap()->GetUnit(guid))
+        {
+            // Avoid all healers picking same target.
+            if (pTarget && role != ROLE_TANK && AreOthersOnSameTarget(pMember->GetObjectGuid(), false, true))
+            {
+                ++it;
+                continue;
+            }
+    
+            // Check if we should heal party member.
+            if ((IsValidHealTarget(pMember, groupHealPercent) && healthPercent > pMember->GetHealthPercent()) ||
+                // Or a pet if there are no injured players.
+                (!pTarget && (pMember = pMember->GetPet()) && IsValidHealTarget(pMember, groupHealPercent) && healthPercent > pMember->GetHealthPercent()))
+            {
+                healthPercent = pMember->GetHealthPercent();
+                pTarget = pMember;
+            }
+            ++it;
+        }
+        else
+        {
+            it = m_groupData->protectedUnits.erase(it);
+            sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "Removing invalid unit from protected set: %u", guid.GetCounter());
         }
     }
 
@@ -2967,19 +3006,32 @@ void CombatBotBaseAI::SummonPetIfNeeded()
         uint32 m_summonPetEntry = 0;
         if (me->GetPetGuid() || me->GetCharmGuid())
         {
-            if (m_summonPetEntry != 0)
+            if (Pet* pPet = me->GetPet())
             {
-                if (Pet* pPet = me->GetPet())
+                CreatureInfo const* cInfo = pPet->GetCreatureInfo();
+                if (!cInfo)
+                    return;
+
+                if (m_summonPetEntry != 0)
                 {
-                    CreatureInfo const* cInfo = pPet->GetCreatureInfo();
-                    if (!cInfo)
-                        return;
+                    // We've already summoned forced pet
                     if (m_summonPetEntry == cInfo->entry)
                         return;
                 }
+                else if (m_preferredPetEntry != 0)
+                {
+                    // We've already summoned preferred pet
+                    if (m_preferredPetEntry == cInfo->entry)
+                        return;
+                }
+
+                // If our current pet isn't a forced pet then assume it's out new preferred pet
+                if (m_summonPetEntry != cInfo->entry && m_forcedPetEntry != cInfo->entry)
+                {
+                    m_preferredPetEntry = cInfo->entry;
+                    m_forcedPetEntry = 0;
+                }
             }
-            else
-                return;
         }
 
         if (m_spells.warlock.pDemonicSacrifice)
@@ -2993,7 +3045,15 @@ void CombatBotBaseAI::SummonPetIfNeeded()
                 m_summonPetEntry = 1863;
         }
 
+        // Remember the pet we were forced to summon
+        if (m_summonPetEntry != 0)
+        {
+            m_forcedPetEntry = m_summonPetEntry;
+        }
+
         // Specific pet
+        if (m_summonPetEntry == 0)
+            m_summonPetEntry = m_preferredPetEntry;
         if (m_summonPetEntry != 0)
         {
             uint32 spell = 0;
@@ -4400,8 +4460,8 @@ void CombatBotBaseAI::OnPacketSentFromClient(WorldPacket const* packet)
             me->GetMotionMaster()->Clear(false, true);
             me->GetMotionMaster()->MoveIdle();
         }
-        if (me->IsInCombat())
-            m_clientMovementTimer.Reset(500);
+        //if (me->IsInCombat())
+        m_clientMovementTimer.Reset(500);
     }
 }
 

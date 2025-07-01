@@ -229,7 +229,7 @@ bool PartyBotAI::RunAwayFromTarget(Unit* pEnemy)
 
 bool PartyBotAI::DoNotMove()
 {
-    return m_stay || !m_clientMovementTimer.Passed() || me->HasUnitState(UNIT_STATE_CAN_NOT_MOVE);
+    return m_stay || !m_clientMovementTimer.Passed() || me->HasUnitState(UNIT_STATE_CAN_NOT_MOVE) || me->IsFalling();
 }
 
 void PartyBotAI::MoveChase(Unit* target, float dist, float angle)
@@ -736,6 +736,9 @@ bool PartyBotAI::CanTryToCastSpell(Unit const* pTarget, SpellEntry const* pSpell
     if (pSpellEntry->IsChanneledSpell() && me->IsMoving() && me->IsMovedByPlayer())
         return false;
 
+    if (pTarget->IsCreature() && pTarget->ToCreature()->IsTotem() && (!pSpellEntry->IsDirectDamageSpell() || pSpellEntry->GetCastTime(me) > 0))
+        return false;
+
     if (!CombatBotBaseAI::CanTryToCastSpell(pTarget, pSpellEntry, ignoreAppliesAuraCheck, checkAuraCaster, ignoreStacks))
         return false;
 
@@ -1084,6 +1087,28 @@ Unit* PartyBotAI::SelectPartyAttackTarget() const
         }
     }
 
+    for (auto it = m_groupData->protectedUnits.begin(); it != m_groupData->protectedUnits.end();)
+    {
+        const ObjectGuid& guid = it->first;
+        if (Unit* pMember = me->GetMap()->GetUnit(guid))
+        {
+            for (const auto pAttacker : pMember->GetAttackers())
+            {
+                if (pPartyAttacker && pPartyAttacker->GetHealth() <= pAttacker->GetHealth())
+                    continue;
+
+                if (IsValidAttackTarget(pAttacker) && CheckThreatOK(pAttacker))
+                    pPartyAttacker = pAttacker;
+            }
+            ++it;
+        }
+        else
+        {
+            it = m_groupData->protectedUnits.erase(it);
+            sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "Removing invalid unit from protected set: %u", guid.GetCounter());
+        }
+    }
+
     return pPartyAttacker;
 }
 
@@ -1159,6 +1184,39 @@ Unit* PartyBotAI::SelectPartyDefendTarget(Unit* pSelectingFor) const
                         attackingNonTank.insert(pAttacker);
                 }
             }
+        }
+    }
+
+    for (auto it = m_groupData->protectedUnits.begin(); it != m_groupData->protectedUnits.end();)
+    {
+        const ObjectGuid& guid = it->first;
+        CombatBotRoles role = it->second;
+
+        if (Unit* pMember = me->GetMap()->GetUnit(guid))
+        {
+            bool isTank = role == ROLE_TANK;
+            bool isHealer = role == ROLE_HEALER;
+            if (isTank)
+            {
+                if (Unit* pTankVictim = pMember->GetVictim())
+                    otherTankVictims.insert(pTankVictim);
+            }
+
+            for (const auto pAttacker : pMember->GetAttackers())
+            {
+                if (isTank)
+                    attackingOtherTank.insert(pAttacker);
+                else if (isHealer)
+                    attackingHealer.insert(pAttacker);
+                else
+                    attackingNonTank.insert(pAttacker);
+            }
+            ++it;
+        }
+        else
+        {
+            it = m_groupData->protectedUnits.erase(it);
+            sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "Removing invalid unit from protected set: %u", guid.GetCounter());
         }
     }
 
@@ -1663,12 +1721,10 @@ void PartyBotAI::UpdateAI(uint32 const diff)
     // When a client is attached, the bot can become flagged as moving when it's not... attempt to fix the symptoms, as identifying the cause is beyond me.
     if (!m_noClient)
     {
-        if (m_clientMovementTimer.Passed() && me->IsMovedByPlayer() && me->GetMotionMaster()->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE)
+        MovementGeneratorType movementType = me->GetMotionMaster()->GetCurrentMovementGeneratorType();
+        if (me->IsMoving() && me->IsStopped() && !me->IsMovedByPlayer() && (movementType == CHASE_MOTION_TYPE || movementType == IDLE_MOTION_TYPE))
         {
-            if (!me->IsStopped())
-                me->StopMoving(true);
-            else if (me->IsMoving())
-                me->RemoveUnitMovementFlag(MOVEFLAG_MASK_MOVING);
+            me->RemoveUnitMovementFlag(MOVEFLAG_MASK_MOVING);
         }
     }
 
@@ -2358,13 +2414,16 @@ void PartyBotAI::UpdateInCombatAI_Paladin()
                 return;
         }
 
-        float healAt = 25.0;
-        if (!ExistsAsHealerInGroupForOffHealCheck())
-            healAt += 20.0;
-        if (!me->GetAttackers().empty())
-            healAt -= 20.0;
-        if (FindAndHealInjuredAlly(healAt, healAt))
-            return;
+        if (me->GetPowerPercent(POWER_MANA) > 20.0f)
+        {
+            float healAt = 25.0f;
+            if (!ExistsAsHealerInGroupForOffHealCheck())
+                healAt += 20.0f;
+            if (!me->GetAttackers().empty())
+                healAt -= 20.0f;
+            if (FindAndHealInjuredAlly(healAt, healAt))
+                return;
+        }
 
         bool const hasSeal = m_spells.paladin.pSeal && me->HasAura(m_spells.paladin.pSeal->Id);
 
@@ -2817,7 +2876,7 @@ void PartyBotAI::UpdateInCombatAI_Hunter()
         {
             Unit* pAttacker = *me->GetAttackers().begin();
 
-            if (m_spells.hunter.pScareBeast &&
+            if (m_spells.hunter.pScareBeast && (me->InBattleGround() || IsInDuel()) &&
                 CanTryToCastSpell(pAttacker, m_spells.hunter.pScareBeast))
             {
                 if (DoCastSpell(pAttacker, m_spells.hunter.pScareBeast) == SPELL_CAST_OK)
@@ -3631,16 +3690,26 @@ void PartyBotAI::UpdateInCombatAI_Priest()
     }
     else if (Unit* pVictim = me->GetVictim())
     {
-        float healAt = 25.0;
-        if (me->GetShapeshiftForm() == FORM_NONE)
-            healAt += 20.0;
-        if (!ExistsAsHealerInGroupForOffHealCheck())
-            healAt += 20.0;
-        if (!me->GetAttackers().empty())
-            healAt -= 20.0;
-        if (Unit* pTarget = SelectHealTarget(healAt, healAt))
-            if (HealInjuredTargetDirect(pTarget))
-                return;
+        if (me->GetPowerPercent(POWER_MANA) > 20.0f)
+        {
+            float healAt = 25.0f;
+            if (me->GetShapeshiftForm() == FORM_NONE)
+                healAt += 20.0f;
+            if (!ExistsAsHealerInGroupForOffHealCheck())
+                healAt += 20.0f;
+            if (!me->GetAttackers().empty())
+                healAt -= 20.0f;
+            if (Unit* pTarget = SelectHealTarget(healAt, healAt))
+            {
+                if (me->HasAuraType(SPELL_AURA_MOD_SHAPESHIFT)) // TBC: Works for priest?
+                {
+                    me->RemoveSpellsCausingAura(SPELL_AURA_MOD_SHAPESHIFT);
+                    return;
+                }
+                if (HealInjuredTargetDirect(pTarget))
+                    return;
+            }
+        }
 
         if (m_spells.priest.pShadowform &&
             CanTryToCastSpell(me, m_spells.priest.pShadowform))
@@ -3938,14 +4007,14 @@ void PartyBotAI::UpdateInCombatAI_Warlock()
 
         if (IsTargetDeathWithinSeconds(pVictim, 3.0f))
         {
-            uint32 soulShads = CountInventoryItem(6265);
-            if (m_spells.warlock.pShadowburn && soulShads >= 4 && CanTryToCastSpell(pVictim, m_spells.warlock.pShadowburn))
+            uint32 soulShards = CountInventoryItem(6265);
+            if (m_spells.warlock.pShadowburn && soulShards >= 4 && CanTryToCastSpell(pVictim, m_spells.warlock.pShadowburn))
             {
                 if (DoCastSpell(pVictim, m_spells.warlock.pShadowburn) == SPELL_CAST_OK)
                     return;
             }
 
-            if (m_spells.warlock.pDrainSoul && soulShads < 4 && CanTryToCastSpell(pVictim, m_spells.warlock.pDrainSoul))
+            if (m_spells.warlock.pDrainSoul && soulShards < 4 && CanTryToCastSpell(pVictim, m_spells.warlock.pDrainSoul))
             {
                 if (DoCastSpell(pVictim, m_spells.warlock.pDrainSoul) == SPELL_CAST_OK)
                     return;
@@ -4044,7 +4113,7 @@ void PartyBotAI::UpdateInCombatAI_Warlock()
                 return;
         }
 
-        if (m_spells.warlock.pFear &&
+        if (m_spells.warlock.pFear && (me->InBattleGround() || IsInDuel()) &&
             pVictim->GetVictim() == me &&
             CanTryToCastSpell(pVictim, m_spells.warlock.pFear))
         {
@@ -4985,13 +5054,13 @@ void PartyBotAI::UpdateInCombatAI_Druid()
 
     if (GetRole() != ROLE_HEALER && me->GetPowerPercent(POWER_MANA) > 35.0f)
     {
-        float healAt = 25.0;
+        float healAt = 25.0f;
         if (me->GetShapeshiftForm() == FORM_NONE)
-            healAt += 20.0;
+            healAt += 20.0f;
         if (!ExistsAsHealerInGroupForOffHealCheck())
-            healAt += 20.0;
+            healAt += 20.0f;
         if (!me->GetAttackers().empty())
-            healAt -= 20.0;
+            healAt -= 20.0f;
         if (Unit* pTarget = SelectHealTarget(healAt, healAt))
         {
             if (me->HasAuraType(SPELL_AURA_MOD_SHAPESHIFT))

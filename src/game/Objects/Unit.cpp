@@ -23,6 +23,7 @@
 #include "Pet.h"
 #include "Totem.h"
 #include "Player.h"
+#include "PartyBotAI.h"
 #include "Log.h"
 #include "Opcodes.h"
 #include "WorldPacket.h"
@@ -7125,7 +7126,18 @@ bool Unit::IsMovedByPlayer() const
     //       static_cast<Player const*>(this)->IsControlledByOwnClient() &&
     //       !static_cast<Player const*>(this)->IsBot();
 
-    return IsPlayer() && static_cast<Player const*>(this)->IsControlledByOwnClient();
+    if (IsPlayer() && static_cast<Player const*>(this)->IsControlledByOwnClient())
+    {
+        Player const* pPlayer = this->ToPlayer();
+        if (!pPlayer->IsBot())
+            return true;
+        if (PartyBotAI* pAI = dynamic_cast<PartyBotAI*>(pPlayer->m_AI))
+        {
+            //sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "IsMovedByPlayer - %s m_noClient %d m_clientMovementTimer %d", GetName(), pAI->m_noClient, pAI->m_clientMovementTimer.GetExpiry());
+            return !pAI->m_noClient && !pAI->m_clientMovementTimer.Passed();
+        }
+    }
+    return false;
 }
 
 PlayerMovementPendingChange::PlayerMovementPendingChange()

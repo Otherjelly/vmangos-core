@@ -678,6 +678,8 @@ public:
     uint8 m_visualHonorRank = 0;
     CombatBotRoles m_role = ROLE_INVALID;
     ShortTimeTracker m_clientMovementTimer;
+    uint32 m_forcedPetEntry;  // Pet we were forced to summon
+    uint32 m_preferredPetEntry; // Pet to use when not forced
 
     struct RecentSpell
     {
@@ -706,6 +708,7 @@ public:
     struct GroupData
     {
         Position losPosition;
+        std::map<ObjectGuid, CombatBotRoles> protectedUnits;
     };
     static std::map<uint32, GroupData> groupIdToDataMap;
     static GroupData* GetGroupData(Player* player);

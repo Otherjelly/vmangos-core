@@ -1163,6 +1163,80 @@ bool ChatHandler::HandlePartyBotSetRoleCommand(char* args)
     return false;
 }
 
+bool ChatHandler::HandlePartyBotProtectCommand(char* args)
+{
+    if (!args)
+        return false;
+
+    Unit* pTarget = GetSelectedUnit();
+    if (!pTarget)
+    {
+        SendSysMessage(LANG_NO_CHAR_SELECTED);
+        SetSentErrorMessage(true);
+        return false;
+    }
+
+    CombatBotRoles role = ROLE_INVALID;
+    std::string roleStr = args;
+
+    if (roleStr == "tank")
+        role = ROLE_TANK;
+    else if (roleStr == "dps")
+        role = CombatBotBaseAI::IsMeleeDamageClass(pTarget->GetClass()) ? ROLE_MELEE_DPS : ROLE_RANGE_DPS;
+    else if (roleStr == "meleedps")
+        role = ROLE_MELEE_DPS;
+    else if (roleStr == "rangedps")
+        role = ROLE_RANGE_DPS;
+    else if (roleStr == "healer")
+        role = ROLE_HEALER;
+
+    if (role == ROLE_INVALID)
+        return false;
+
+    Player* pPlayer = GetSession()->GetPlayer();
+    CombatBotBaseAI::GroupData* groupData = CombatBotBaseAI::GetGroupData(pPlayer);
+    if (groupData)
+    {
+        groupData->protectedUnits[pTarget->GetObjectGuid()] = role;
+        PSendSysMessage("%s is now protected as %s.", pTarget->GetName(), roleStr.c_str());
+        return true;
+    }
+
+    SendSysMessage("No group.");
+    SetSentErrorMessage(true);
+    return false;
+}
+
+bool ChatHandler::HandlePartyBotUnprotectCommand(char* args)
+{
+    if (!args)
+        return false;
+
+    Unit* pTarget = nullptr;
+    Player* pPlayer = GetSession()->GetPlayer();
+    if (pPlayer->GetSelectionGuid())
+        pTarget = GetSelectedUnit();
+    CombatBotBaseAI::GroupData* groupData = CombatBotBaseAI::GetGroupData(pPlayer);
+    if (groupData)
+    {
+        if (pTarget)
+        {
+            groupData->protectedUnits.erase(pTarget->GetObjectGuid());
+            PSendSysMessage("%s is no longer protected.", pTarget->GetName());
+        }
+        else
+        {
+            groupData->protectedUnits.clear();
+            PSendSysMessage("Units are no longer protected.");
+        }
+        return true;
+    }
+
+    SendSysMessage("No group.");
+    SetSentErrorMessage(true);
+    return false;
+}
+
 bool ChatHandler::HandlePartyBotAttackStartCommand(char* args)
 {
     Player* pPlayer = GetSession()->GetPlayer();
