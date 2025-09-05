@@ -53,6 +53,7 @@ public:
     void OnPlayerLogin() final;
     void UpdateAI(uint32 const diff) final;
     void OnPacketReceived(WorldPacket const* packet) final;
+    void OnPacketSentFromClient(WorldPacket const* packet) final;
 
     void CloneFromPlayer(Player const* pPlayer);
     void AddToPlayerGroup();

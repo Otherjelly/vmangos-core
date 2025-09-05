@@ -1531,6 +1531,11 @@ void PartyBotAI::OnPacketReceived(WorldPacket const* packet)
     CombatBotBaseAI::OnPacketReceived(packet);
 }
 
+void PartyBotAI::OnPacketSentFromClient(WorldPacket const* packet)
+{
+    CombatBotBaseAI::OnPacketSentFromClient(packet);
+}
+
 void PartyBotAI::OnPlayerLogin()
 {
     if (!m_initialized)

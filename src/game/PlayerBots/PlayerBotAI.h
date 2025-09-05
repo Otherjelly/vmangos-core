@@ -39,6 +39,7 @@ class PlayerBotAI: public PlayerAI
         virtual bool OnSessionLoaded(PlayerBotEntry* entry, WorldSession* sess);
         virtual void OnBotEntryLoad(PlayerBotEntry* entry) {}
         virtual void OnPacketReceived(WorldPacket const* /*packet*/) {} // server has sent a packet to this session
+        virtual void OnPacketSentFromClient(WorldPacket const* /*packet*/) {};
         void UpdateAI(uint32 const /*diff*/) override; // Handle delayed teleports
         virtual void OnPlayerLogin() {}
         virtual void BeforeAddToMap(Player* player) {} // me=nullptr at call

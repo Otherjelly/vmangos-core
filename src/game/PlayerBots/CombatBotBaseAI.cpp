@@ -2805,8 +2805,12 @@ bool CombatBotBaseAI::IsValidBuffTarget(Unit const* pTarget, SpellEntry const* p
             if (it == i.first)
                 return false;
 
-        // Fudge a blessing vs greater blessing check
-        if (pSpellEntry->IsFitToFamily<SPELLFAMILY_PALADIN, CF_PALADIN_BLESSINGS>())
+        // Fudge a blessing vs greater blessing check, and guess similar fortitude, shadow protection, MotW, etc checks.. Spirit?
+        if (pSpellEntry->IsFitToFamily<SPELLFAMILY_PALADIN, CF_PALADIN_BLESSINGS>() ||
+            pSpellEntry->IsFitToFamily<SPELLFAMILY_PRIEST, CF_PRIEST_POWER_WORD_FORTITUDE>() ||
+            pSpellEntry->IsFitToFamily<SPELLFAMILY_PRIEST, CF_PRIEST_SHADOW_PROTECTION>() ||
+            pSpellEntry->IsFitToFamily<SPELLFAMILY_DRUID, CF_DRUID_MARK_OF_THE_WILD>() ||
+            pSpellEntry->IsFitToFamily<SPELLFAMILY_MAGE, CF_MAGE_ARCANE_INT>())
         {
             if (SpellEntry const* spellInfo_2 = sSpellMgr.GetSpellEntry(i.first))
                 if (spellInfo_2->GetSpellFamilyFlags() == pSpellEntry->GetSpellFamilyFlags() && spellInfo_2->EffectApplyAuraName[0] == pSpellEntry->EffectApplyAuraName[0])
@@ -2828,7 +2832,7 @@ bool CombatBotBaseAI::IsValidBuffTarget(Unit const* pTarget, SpellEntry const* p
 
 bool CombatBotBaseAI::IsValidSelectBuffTarget(Unit const* pTarget, SpellEntry const* pSpellEntry, bool rebuff) const
 {
-    if (pSpellEntry == m_spells.warlock.pUnendingBreath && !pTarget->IsSwimming())
+    if (me->GetClass() == CLASS_WARLOCK && pSpellEntry == m_spells.warlock.pUnendingBreath && !pTarget->IsUnderwater())
         return false;
 
     if (pTarget->IsPlayer() && pTarget->ToPlayer()->IsGameMaster())
@@ -4452,17 +4456,25 @@ void CombatBotBaseAI::OnPacketSentFromClient(WorldPacket const* packet)
         return;
 
     uint16 opcode = packet->GetOpcode();
-    if (opcode != MSG_MOVE_STOP && opcode != MSG_MOVE_FALL_LAND)
+    if (opcode == MSG_MOVE_START_STRAFE_LEFT ||
+        opcode == MSG_MOVE_START_STRAFE_RIGHT ||
+        opcode == MSG_MOVE_SET_FACING ||
+        opcode == MSG_MOVE_START_FORWARD ||
+        opcode == MSG_MOVE_START_BACKWARD ||
+        opcode == MSG_MOVE_START_TURN_LEFT ||
+        opcode == MSG_MOVE_START_TURN_RIGHT ||
+        opcode == MSG_MOVE_HEARTBEAT)
     {
         if (me->GetMotionMaster()->GetCurrentMovementGeneratorType() != IDLE_MOTION_TYPE)
         {
             me->StopMoving();
-            me->GetMotionMaster()->Clear(false, true);
+            me->GetMotionMaster()->Clear();
             me->GetMotionMaster()->MoveIdle();
         }
-        //if (me->IsInCombat())
-        m_clientMovementTimer.Reset(500);
+        m_clientMovementTimer.Reset(1000);
     }
+    if (opcode == MSG_MOVE_STOP)
+        m_clientMovementTimer.Reset(500);
 }
 
 std::map<uint32, CombatBotBaseAI::GroupData> CombatBotBaseAI::groupIdToDataMap;
